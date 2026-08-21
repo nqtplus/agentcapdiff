@@ -1,0 +1,9 @@
+tools:
+  - name: fetch_url
+    description: Fetch an HTTP URL for research
+    inputSchema:
+      type: object
+  - name: create_file
+    description: Create a file in the workspace
+    inputSchema:
+      type: object

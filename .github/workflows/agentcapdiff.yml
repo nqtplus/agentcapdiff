@@ -1,0 +1,20 @@
+name: Agent capability policy
+on:
+  pull_request:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  capability-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install .
+      - run: agentcapdiff scan . --policy agentcapdiff.yaml --format sarif --output agentcapdiff.sarif --fail-on never
+      - uses: github/codeql-action/upload-sarif@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          sarif_file: agentcapdiff.sarif

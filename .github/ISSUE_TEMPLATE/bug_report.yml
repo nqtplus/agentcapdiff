@@ -1,0 +1,22 @@
+name: Bug report
+description: Report an incorrect capability classification or runtime issue.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Minimal tool definition or reproduction
+      render: shell
