@@ -1,0 +1,40 @@
+name: PR capability diff
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  capability-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install .
+      - name: Snapshot base and head
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          BASE_DIR="$RUNNER_TEMP/agentcapdiff-base"
+          git worktree add --detach "$BASE_DIR" "$BASE_SHA"
+          agentcapdiff snapshot "$BASE_DIR" \
+            --policy "$BASE_DIR/agentcapdiff.yaml" \
+            --output "$RUNNER_TEMP/base.json"
+          agentcapdiff snapshot . \
+            --policy agentcapdiff.yaml \
+            --output "$RUNNER_TEMP/head.json"
+      - name: Render capability diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          agentcapdiff diff \
+            "$RUNNER_TEMP/base.json" \
+            "$RUNNER_TEMP/head.json" \
+            --format markdown \
+            --output "$RUNNER_TEMP/capability-diff.md"
+          cat "$RUNNER_TEMP/capability-diff.md" >> "$GITHUB_STEP_SUMMARY"

@@ -4,6 +4,12 @@ All notable changes will be documented here.
 
 ## [Unreleased]
 
+### Added
+- PR-native base/head capability comparison workflow
+- Markdown capability diff output for GitHub review summaries
+- Risk-score context and policy findings in snapshots/diffs
+- Escaping for untrusted values rendered into Markdown summaries
+
 ## [0.1.0] - 2026-08-21
 
 ### Added
