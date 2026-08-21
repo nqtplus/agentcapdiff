@@ -1,0 +1,11 @@
+# Example default policy. Tune this for your project.
+max_risk_score: 60
+
+deny:
+  - secrets.access
+
+require_review:
+  - shell.execute
+  - filesystem.write
+  - email.send
+  - github.write

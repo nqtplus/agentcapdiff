@@ -1,0 +1,25 @@
+name: AgentCapDiff
+branding:
+  icon: shield
+  color: blue
+description: Detect risky AI-agent capability changes in CI.
+inputs:
+  path:
+    description: Path to scan
+    required: false
+    default: .
+  policy:
+    description: Policy file
+    required: false
+    default: agentcapdiff.yaml
+  fail-on:
+    description: Failure threshold (never, medium, high)
+    required: false
+    default: high
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: python -m pip install "${{ github.action_path }}"
+    - shell: bash
+      run: agentcapdiff scan "${{ inputs.path }}" --policy "${{ inputs.policy }}" --fail-on "${{ inputs.fail-on }}"
