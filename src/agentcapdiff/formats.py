@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import html
 import json
 from pathlib import Path
+from typing import Any
 
 from .models import ScanResult
 
@@ -32,6 +34,68 @@ def json_report(result: ScanResult) -> str:
     return json.dumps(result.to_dict(), indent=2, sort_keys=True)
 
 
+def _markdown_escape(value: object) -> str:
+    text = html.escape(str(value), quote=False)
+    text = text.replace("\r", " ").replace("\n", " ")
+    special = (
+        "\\",
+        "`",
+        "*",
+        "_",
+        "{",
+        "}",
+        "[",
+        "]",
+        "(",
+        ")",
+        "#",
+        "+",
+        "|",
+        "!",
+    )
+    for char in special:
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
+def markdown_diff_report(diff: dict[str, Any]) -> str:
+    base_risk = int(diff.get("base_risk_score", 0))
+    head_risk = int(diff.get("head_risk_score", 0))
+    delta = int(diff.get("risk_delta", head_risk - base_risk))
+    delta_text = f"+{delta}" if delta > 0 else str(delta)
+    lines = [
+        "## AgentCapDiff capability change",
+        "",
+        f"**Risk score:** {base_risk}/100 → {head_risk}/100 ({delta_text})",
+    ]
+
+    sections = (
+        ("Capabilities added", diff.get("capabilities_added", [])),
+        ("Capabilities removed", diff.get("capabilities_removed", [])),
+        ("Tools added", diff.get("tools_added", [])),
+        ("Tools removed", diff.get("tools_removed", [])),
+    )
+    has_change = False
+    for title, values in sections:
+        if not values:
+            continue
+        has_change = True
+        lines.extend(["", f"### {title}"])
+        lines.extend(f"- `{_markdown_escape(value)}`" for value in values)
+
+    findings = list(diff.get("head_findings", []))
+    if findings:
+        lines.extend(["", "### Policy findings in PR head"])
+        for finding in findings:
+            severity = _markdown_escape(finding.get("severity", "INFO"))
+            message = _markdown_escape(finding.get("message", "Policy finding"))
+            lines.append(f"- **{severity}** — {message}")
+
+    if not has_change:
+        lines.extend(["", "No capability or tool changes detected."])
+    return "\n".join(lines)
+
+
 def sarif_report(result: ScanResult) -> str:
     rules = {}
     sarif_results = []
@@ -59,8 +123,6 @@ def sarif_report(result: ScanResult) -> str:
             except Exception:
                 uri = finding.source
         else:
-            # GitHub code scanning requires at least one location per result.
-            # Policy-level findings are anchored to the policy file.
             uri = "agentcapdiff.yaml"
         item["locations"] = [
             {"physicalLocation": {"artifactLocation": {"uri": uri}}}

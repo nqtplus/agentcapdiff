@@ -10,11 +10,11 @@
 - [x] Composite GitHub Action
 
 ## v0.2 — PR-native capability diffs
-- [ ] Baseline snapshots from the default branch
-- [ ] Markdown PR summary
-- [ ] Stable capability fingerprint
-- [ ] Path-aware filesystem scope analysis
-- [ ] Domain-aware network scope analysis
+- [x] Baseline snapshots from the default branch
+- [x] Markdown PR summary
+- [ ] Stable capability fingerprint — #4
+- [ ] Path-aware filesystem scope analysis — #5
+- [ ] Domain-aware network scope analysis — #6
 
 ## v0.3 — Framework adapters
 - [ ] OpenAI Agents SDK adapter

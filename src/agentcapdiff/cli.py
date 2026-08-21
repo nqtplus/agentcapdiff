@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from .diffing import compare_snapshots, write_snapshot
-from .formats import json_report, sarif_report, text_report
+from .formats import json_report, markdown_diff_report, sarif_report, text_report
 from .scanner import scan
 
 
@@ -34,6 +34,8 @@ def _parser() -> argparse.ArgumentParser:
     diff_p = sub.add_parser("diff", help="Compare two capability snapshots.")
     diff_p.add_argument("base")
     diff_p.add_argument("head")
+    diff_p.add_argument("--format", choices=["json", "markdown"], default="json")
+    diff_p.add_argument("--output")
     return parser
 
 
@@ -43,6 +45,14 @@ def _should_fail(severity: str, threshold: str) -> bool:
     order = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
     minimum = {"medium": 2, "high": 3}[threshold]
     return order.get(severity, 0) >= minimum
+
+
+def _write_or_print(report: str, output: str | None) -> None:
+    if output:
+        suffix = "\n" if not report.endswith("\n") else ""
+        Path(output).write_text(report + suffix, encoding="utf-8")
+    else:
+        print(report)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,11 +67,7 @@ def main(argv: list[str] | None = None) -> int:
             "json": json_report,
             "sarif": sarif_report,
         }[args.format](result)
-        if args.output:
-            suffix = "\n" if not report.endswith("\n") else ""
-            Path(args.output).write_text(report + suffix, encoding="utf-8")
-        else:
-            print(report)
+        _write_or_print(report, args.output)
         return 2 if _should_fail(result.max_severity, args.fail_on) else 0
 
     if args.command == "snapshot":
@@ -72,7 +78,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "diff":
-        print(json.dumps(compare_snapshots(Path(args.base), Path(args.head)), indent=2))
+        diff = compare_snapshots(Path(args.base), Path(args.head))
+        if args.format == "markdown":
+            report = markdown_diff_report(diff)
+        else:
+            report = json.dumps(diff, indent=2)
+        _write_or_print(report, args.output)
         return 0
     return 1
 

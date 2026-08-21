@@ -1,14 +1,17 @@
 # AgentCapDiff
 
+[![CI](https://github.com/nqtplus/agentcapdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/nqtplus/agentcapdiff/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/nqtplus/agentcapdiff/actions/workflows/codeql.yml/badge.svg)](https://github.com/nqtplus/agentcapdiff/actions/workflows/codeql.yml)
+
 **Policy-as-code and capability diffing for AI agents.**
 
 AgentCapDiff helps reviewers answer a deceptively hard question before an agent-enabled pull request is merged:
 
 > **What can this agent do now that it could not do before?**
 
-It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and produces snapshots that can be diffed in CI.
+It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **early alpha (v0.1.0)**. The classifier is intentionally simple and explainable. Expect false positives while adapters and semantic rules mature.
+> Status: **early alpha**. The classifier is intentionally simple and explainable. Expect false positives while adapters and semantic scope rules mature.
 
 ## Why this exists
 
@@ -18,12 +21,22 @@ AgentCapDiff treats agent capability as a reviewable artifact.
 
 ## Quick start
 
+Install directly from the repository:
+
 ```bash
-python -m pip install -e .
-agentcapdiff scan examples --policy agentcapdiff.yaml
+python -m pip install "git+https://github.com/nqtplus/agentcapdiff.git"
+agentcapdiff scan ./agent --policy agentcapdiff.yaml
 ```
 
-Example output:
+Or for local development:
+
+```bash
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
+```
+
+Example scan output:
 
 ```text
 AgentCapDiff
@@ -54,7 +67,7 @@ require_review:
   - github.write
 ```
 
-## Capability snapshots and diffs
+## Snapshots and diffs
 
 ```bash
 agentcapdiff snapshot ./agent --output before.json
@@ -63,7 +76,7 @@ agentcapdiff snapshot ./agent --output after.json
 agentcapdiff diff before.json after.json
 ```
 
-Example:
+Machine-readable diff example:
 
 ```json
 {
@@ -71,45 +84,59 @@ Example:
   "capabilities_removed": [],
   "tools_added": ["shell_execute"],
   "tools_removed": [],
+  "base_risk_score": 10,
+  "head_risk_score": 45,
   "risk_delta": 35
 }
 ```
 
+For a reviewer-friendly summary:
+
+```bash
+agentcapdiff diff before.json after.json --format markdown
+```
+
+## PR-native capability diff
+
+The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
+
+This makes capability expansion visible alongside normal test and security checks.
+
 ## GitHub Action
 
-Once this repository is published, a project can use:
+Until a stable major-version tag is published, pin the action to a commit for production use. For evaluation against the current default branch:
 
 ```yaml
-- uses: nqtplus/agentcapdiff@v1
+- uses: nqtplus/agentcapdiff@main
   with:
     path: .
     policy: agentcapdiff.yaml
     fail-on: high
 ```
 
-The repository also contains a SARIF workflow so findings can appear in GitHub code scanning.
+The repository also contains SARIF upload and CodeQL workflows.
 
-## Supported inputs in v0.1
+## Supported inputs
 
 - OpenAI-style JSON/YAML function tools
 - MCP-like JSON/YAML tool objects with `name` + `inputSchema`
 - Generic nested `tools` collections
 
-Planned adapters are tracked in [ROADMAP.md](ROADMAP.md).
+Planned adapters and scope analysis are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
 
 ## Security model
 
-AgentCapDiff is a **static policy aid**, not a sandbox, exploit scanner, or proof that an agent is safe. A clean scan must never be interpreted as permission to run untrusted tools with unrestricted credentials.
+AgentCapDiff is a **static policy aid**, not a sandbox, exploit scanner, runtime authorization system, or proof that an agent is safe. A clean scan must never be interpreted as permission to run untrusted tools with unrestricted credentials.
 
-See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
+AgentCapDiff does not import target project code or execute discovered tools. See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
 
 ## Design principles
 
 1. **Explainable over magical** — every inferred capability must have a visible reason.
 2. **Diffs over dashboards** — PR reviewers need to see change, not just a score.
 3. **Least privilege by default** — powerful capabilities should be explicitly reviewed.
-4. **CI-native** — text, JSON, SARIF, stable exit codes.
-5. **Framework-neutral** — adapters should normalize into one small capability model.
+4. **CI-native** — text, JSON, Markdown, SARIF, and stable exit behavior.
+5. **Framework-neutral** — adapters normalize into one small capability model.
 
 ## Contributing
 
