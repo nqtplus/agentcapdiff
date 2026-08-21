@@ -9,6 +9,7 @@ All notable changes will be documented here.
 - Markdown capability diff output for GitHub review summaries
 - Risk-score context and policy findings in snapshots/diffs
 - Escaping for untrusted values rendered into Markdown summaries
+- Stable SHA-256 capability fingerprints with backward-compatible derivation
 
 ## [0.1.0] - 2026-08-21
 

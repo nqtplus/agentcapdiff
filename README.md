@@ -76,6 +76,8 @@ agentcapdiff snapshot ./agent --output after.json
 agentcapdiff diff before.json after.json
 ```
 
+New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, and risk score do not affect the fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
+
 Machine-readable diff example:
 
 ```json
@@ -86,7 +88,8 @@ Machine-readable diff example:
   "tools_removed": [],
   "base_risk_score": 10,
   "head_risk_score": 45,
-  "risk_delta": 35
+  "risk_delta": 35,
+  "fingerprint_changed": true
 }
 ```
 
