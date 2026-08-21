@@ -69,6 +69,14 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         f"**Risk score:** {base_risk}/100 → {head_risk}/100 ({delta_text})",
     ]
 
+    base_fingerprint = str(diff.get("base_capability_fingerprint", ""))
+    head_fingerprint = str(diff.get("head_capability_fingerprint", ""))
+    if base_fingerprint and head_fingerprint:
+        lines.append(
+            "**Capability fingerprint:** "
+            f"`{base_fingerprint[:12]}` → `{head_fingerprint[:12]}`"
+        )
+
     sections = (
         ("Capabilities added", diff.get("capabilities_added", [])),
         ("Capabilities removed", diff.get("capabilities_removed", [])),
