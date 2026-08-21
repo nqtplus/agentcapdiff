@@ -29,7 +29,11 @@ def load_policy(path: Path | None) -> Policy:
     )
 
 
-def evaluate_policy(capabilities: list[Capability], policy: Policy, risk_score: int) -> list[Finding]:
+def evaluate_policy(
+    capabilities: list[Capability],
+    policy: Policy,
+    risk_score: int,
+) -> list[Finding]:
     findings: list[Finding] = []
     seen: set[tuple[str, str]] = set()
     for cap in capabilities:
@@ -38,9 +42,33 @@ def evaluate_policy(capabilities: list[Capability], policy: Policy, risk_score: 
             continue
         seen.add(key)
         if cap.id in policy.deny:
-            findings.append(Finding("HIGH", "capability.denied", f"Denied capability detected: {cap.id}", cap.id, cap.tool, cap.source))
+            findings.append(
+                Finding(
+                    "HIGH",
+                    "capability.denied",
+                    f"Denied capability detected: {cap.id}",
+                    cap.id,
+                    cap.tool,
+                    cap.source,
+                )
+            )
         elif cap.id in policy.require_review:
-            findings.append(Finding("MEDIUM", "capability.review_required", f"Capability requires human review: {cap.id}", cap.id, cap.tool, cap.source))
+            findings.append(
+                Finding(
+                    "MEDIUM",
+                    "capability.review_required",
+                    f"Capability requires human review: {cap.id}",
+                    cap.id,
+                    cap.tool,
+                    cap.source,
+                )
+            )
     if risk_score > policy.max_risk_score:
-        findings.append(Finding("HIGH", "risk.threshold", f"Risk score {risk_score} exceeds policy threshold {policy.max_risk_score}."))
+        findings.append(
+            Finding(
+                "HIGH",
+                "risk.threshold",
+                f"Risk score {risk_score} exceeds policy threshold {policy.max_risk_score}.",
+            )
+        )
     return findings

@@ -48,7 +48,11 @@ class ScanResult:
     @property
     def max_severity(self) -> str:
         order = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
-        return max((f.severity for f in self.findings), key=lambda x: order.get(x, 0), default="INFO")
+        return max(
+            (f.severity for f in self.findings),
+            key=lambda x: order.get(x, 0),
+            default="INFO",
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

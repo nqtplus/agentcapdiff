@@ -35,26 +35,50 @@ def json_report(result: ScanResult) -> str:
 def sarif_report(result: ScanResult) -> str:
     rules = {}
     sarif_results = []
+    levels = {
+        "CRITICAL": "error",
+        "HIGH": "error",
+        "MEDIUM": "warning",
+        "LOW": "note",
+        "INFO": "note",
+    }
     for finding in result.findings:
         rules[finding.rule_id] = {
             "id": finding.rule_id,
             "shortDescription": {"text": finding.rule_id.replace(".", " ").title()},
         }
-        level = {"CRITICAL": "error", "HIGH": "error", "MEDIUM": "warning", "LOW": "note", "INFO": "note"}.get(finding.severity, "note")
-        item = {"ruleId": finding.rule_id, "level": level, "message": {"text": finding.message}}
+        level = levels.get(finding.severity, "note")
+        item = {
+            "ruleId": finding.rule_id,
+            "level": level,
+            "message": {"text": finding.message},
+        }
         if finding.source:
             try:
                 uri = Path(finding.source).as_posix()
             except Exception:
                 uri = finding.source
-            item["locations"] = [{"physicalLocation": {"artifactLocation": {"uri": uri}}}]
+        else:
+            # GitHub code scanning requires at least one location per result.
+            # Policy-level findings are anchored to the policy file.
+            uri = "agentcapdiff.yaml"
+        item["locations"] = [
+            {"physicalLocation": {"artifactLocation": {"uri": uri}}}
+        ]
         sarif_results.append(item)
     payload = {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-        "runs": [{
-            "tool": {"driver": {"name": "AgentCapDiff", "rules": list(rules.values())}},
-            "results": sarif_results,
-        }],
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "AgentCapDiff",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": sarif_results,
+            }
+        ],
     }
     return json.dumps(payload, indent=2)
