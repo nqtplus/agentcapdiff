@@ -136,7 +136,13 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
             lines.append(f"- **{severity}** — {message}")
 
     if not has_change:
-        lines.extend(["", "No capability or tool changes detected. No static scope changes detected."])
+        lines.extend(
+            [
+                "",
+                "No capability or tool changes detected. "
+                "No static scope changes detected.",
+            ]
+        )
     return "\n".join(lines)
 
 
