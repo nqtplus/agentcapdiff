@@ -16,6 +16,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "mcp"
         ("network_exact.json", "network.external", "restricted"),
         ("network_wildcard.yaml", "network.external", "restricted"),
         ("network_broad.json", "network.external", "broad"),
+        ("network_unknown.yaml", "network.external", "unknown"),
     ],
 )
 def test_fixture_classification(name: str, expected_capability: str, expected_scope: str):
