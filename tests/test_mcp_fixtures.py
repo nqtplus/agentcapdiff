@@ -4,7 +4,6 @@ import pytest
 
 from agentcapdiff.scanner import scan
 
-
 FIXTURES = Path(__file__).parent / "fixtures" / "mcp"
 
 
