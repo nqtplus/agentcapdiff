@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +13,34 @@ SUPPORTED_SUFFIXES = {".json", ".yaml", ".yml"}
 IGNORED_DIRS = {".git", ".venv", "venv", "node_modules", "dist", "build", ".tox"}
 
 
-def _read(path: Path) -> Any:
+class DiscoveryLimitError(ValueError):
+    """Raised when untrusted discovery input exceeds a configured safety bound."""
+
+
+@dataclass(frozen=True)
+class DiscoveryLimits:
+    max_file_bytes: int = 1_048_576
+    max_total_bytes: int = 8_388_608
+    max_documents: int = 1_000
+    max_depth: int = 64
+    max_nodes_per_document: int = 100_000
+
+
+DEFAULT_LIMITS = DiscoveryLimits()
+
+
+def _read(path: Path, limits: DiscoveryLimits) -> tuple[Any, int]:
+    if path.is_symlink():
+        raise DiscoveryLimitError(f"refusing to read symlinked input: {path}")
+    size = path.stat().st_size
+    if size > limits.max_file_bytes:
+        raise DiscoveryLimitError(
+            f"input file exceeds {limits.max_file_bytes} byte limit: {path} ({size} bytes)"
+        )
     text = path.read_text(encoding="utf-8")
-    if path.suffix == ".json":
-        return json.loads(text)
-    return yaml.safe_load(text)
+    if path.suffix.lower() == ".json":
+        return json.loads(text), size
+    return yaml.safe_load(text), size
 
 
 def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
@@ -33,40 +57,83 @@ def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
     return None
 
 
-def _walk(value: Any, source: str, out: list[ToolRecord]) -> None:
-    if isinstance(value, dict):
-        direct = _tool_from_mapping(value, source)
-        if direct:
-            out.append(direct)
-        for key, child in value.items():
-            if key in {"tools", "functions"} and isinstance(child, list):
-                for item in child:
-                    if isinstance(item, dict):
-                        tool = _tool_from_mapping(item, source)
-                        if tool:
-                            out.append(tool)
-                        else:
-                            _walk(item, source, out)
-            elif isinstance(child, (dict, list)):
-                _walk(child, source, out)
-    elif isinstance(value, list):
-        for child in value:
-            _walk(child, source, out)
+def _walk(value: Any, source: str, out: list[ToolRecord], limits: DiscoveryLimits) -> None:
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    visited: set[int] = set()
+    nodes = 0
+
+    while stack:
+        current, depth = stack.pop()
+        if depth > limits.max_depth:
+            raise DiscoveryLimitError(
+                f"input nesting exceeds depth limit {limits.max_depth}: {source}"
+            )
+
+        if not isinstance(current, (dict, list)):
+            continue
+
+        object_id = id(current)
+        if object_id in visited:
+            continue
+        visited.add(object_id)
+
+        nodes += 1
+        if nodes > limits.max_nodes_per_document:
+            raise DiscoveryLimitError(
+                "input structure exceeds node limit "
+                f"{limits.max_nodes_per_document}: {source}"
+            )
+
+        if isinstance(current, dict):
+            direct = _tool_from_mapping(current, source)
+            if direct:
+                out.append(direct)
+            for child in current.values():
+                if isinstance(child, (dict, list)):
+                    stack.append((child, depth + 1))
+        else:
+            for child in current:
+                if isinstance(child, (dict, list)):
+                    stack.append((child, depth + 1))
 
 
-def discover_tools(root: Path) -> list[ToolRecord]:
-    candidates = [root] if root.is_file() else [p for p in root.rglob("*") if p.is_file()]
+def discover_tools(
+    root: Path,
+    limits: DiscoveryLimits = DEFAULT_LIMITS,
+) -> list[ToolRecord]:
+    if not root.exists():
+        raise FileNotFoundError(f"scan path does not exist: {root}")
+
+    candidates = (root,) if root.is_file() else (p for p in root.rglob("*") if p.is_file())
     found: list[ToolRecord] = []
+    total_bytes = 0
+    documents = 0
+
     for path in candidates:
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             continue
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
+
+        documents += 1
+        if documents > limits.max_documents:
+            raise DiscoveryLimitError(
+                f"candidate document count exceeds limit {limits.max_documents}: {root}"
+            )
+
         try:
-            data = _read(path)
-        except (OSError, ValueError, yaml.YAMLError):
+            data, size = _read(path, limits)
+        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError):
+            # Malformed/unreadable documents are ignored; resource-limit violations are not.
             continue
-        _walk(data, str(path), found)
+
+        total_bytes += size
+        if total_bytes > limits.max_total_bytes:
+            raise DiscoveryLimitError(
+                f"total parsed input exceeds {limits.max_total_bytes} byte limit: {root}"
+            )
+
+        _walk(data, str(path), found, limits)
 
     dedup: dict[tuple[str, str], ToolRecord] = {}
     for tool in found:
