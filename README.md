@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **early alpha**. The classifier is intentionally simple and explainable. Expect false positives and false negatives while adapters and semantic scope rules mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.2.0 alpha — semantic scope + safety foundation complete.** The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while adapters and schema coverage mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -69,6 +69,14 @@ require_review:
   - github.write
 ```
 
+## Static filesystem and network scopes
+
+v0.2 keeps existing capability IDs while attaching separate static scope evidence to filesystem and external-network capabilities. Scope is classified as `restricted`, `broad`, or `unknown`.
+
+Examples of meaningful review changes include `./reports/**` → `/**` and `api.example.com` → arbitrary network access. Dynamic paths, traversal-like paths, unconstrained URL fields, and ambiguous metadata remain `unknown`; AgentCapDiff never upgrades uncertainty into a reassuring restriction.
+
+Scope evidence is derived only from static tool metadata. AgentCapDiff does not execute tool code, resolve DNS, contact discovered endpoints, or prove that runtime enforcement matches the declared schema. See [docs/scopes.md](docs/scopes.md).
+
 ## Snapshots and diffs
 
 ```bash
@@ -78,7 +86,9 @@ agentcapdiff snapshot ./agent --output after.json
 agentcapdiff diff before.json after.json
 ```
 
-New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, and risk score do not affect the fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
+New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, risk score, and scope evidence do not affect the fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
+
+Snapshots also retain filesystem/network scope evidence separately so semantic scope changes can be reviewed without changing capability IDs or fingerprint compatibility.
 
 Machine-readable diff example:
 
@@ -88,6 +98,8 @@ Machine-readable diff example:
   "capabilities_removed": [],
   "tools_added": ["shell_execute"],
   "tools_removed": [],
+  "scope_changes": [],
+  "scope_expansions": [],
   "base_risk_score": 10,
   "head_risk_score": 45,
   "risk_delta": 35,
@@ -105,7 +117,7 @@ agentcapdiff diff before.json after.json --format markdown
 
 The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
 
-This makes capability expansion visible alongside normal test and security checks.
+This makes capability expansion and statically proven scope expansion visible alongside normal test and security checks.
 
 ## GitHub Action
 
@@ -119,7 +131,7 @@ Until a stable major-version tag is published, pin the action to a reviewed immu
     fail-on: high
 ```
 
-The repository also contains SARIF upload and CodeQL workflows.
+The repository also contains SARIF upload, CodeQL, PR capability-diff, and project-state consistency workflows.
 
 ## Supported inputs
 
@@ -129,7 +141,9 @@ The repository also contains SARIF upload and CodeQL workflows.
 
 Discovery treats these files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
 
-Planned adapters and scope analysis are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
+The v0.2 hardening suite includes malformed/pathological input cases, deterministic fuzz/property tests, path traversal/symlink regression coverage, output-injection regression tests, and checks that discovered endpoints do not trigger network access.
+
+Planned adapters and future capability-schema work are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
 
 ## Security model
 
@@ -139,7 +153,7 @@ AgentCapDiff does not import target project code, execute discovered tools, prob
 
 Use AgentCapDiff as one layer of defense in depth alongside ordinary code review, runtime least-privilege authorization, sandboxing/isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
 
-See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md) for supported security posture, reporting, trust boundaries, and residual risks.
+See [SECURITY.md](SECURITY.md), [docs/threat-model.md](docs/threat-model.md), and [docs/scopes.md](docs/scopes.md) for supported security posture, reporting, trust boundaries, scope semantics, and residual risks.
 
 ## Design principles
 

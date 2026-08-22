@@ -1,0 +1,9 @@
+name: fetch_url
+description: Fetch a caller-provided URL
+inputSchema:
+  type: object
+  properties:
+    url:
+      type: string
+      format: uri
+  required: [url]

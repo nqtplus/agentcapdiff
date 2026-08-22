@@ -1,0 +1,42 @@
+name: Project state consistency
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify roadmap and version metadata
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import sys
+
+          roadmap = Path("ROADMAP.md").read_text(encoding="utf-8")
+          pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+          readme = Path("README.md").read_text(encoding="utf-8")
+
+          m = re.search(r'^version = "([^"]+)"$', pyproject, re.M)
+          if not m:
+              raise SystemExit("pyproject.toml has no project version")
+          version = m.group(1)
+
+          active = re.search(r"## (v\d+\.\d+) — [^\n]+\n(?:.*\n){0,3}", roadmap)
+          if not active:
+              raise SystemExit("ROADMAP.md has no version section")
+
+          incomplete_v02 = bool(re.search(r"## v0\.2[^#]+- \[ \]", roadmap, re.S))
+          if incomplete_v02 and version.startswith("0.2.0") and not version.endswith(".dev0"):
+              raise SystemExit("v0.2 is incomplete but package metadata claims a final 0.2.0 release")
+          if "v0.2" in readme and "IN_PROGRESS" in readme and version == "0.1.0":
+              raise SystemExit("README targets v0.2 but pyproject still advertises 0.1.0")
+
+          print(f"project state metadata consistent: version={version}")

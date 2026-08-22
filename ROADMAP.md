@@ -52,18 +52,18 @@ These rules apply to every release and adapter:
 - [x] Capability snapshots and diffs
 - [x] Composite GitHub Action
 
-## v0.2 — Semantic scope + safety foundation
+## v0.2 — Semantic scope + safety foundation ✅
 
 Goal: make capability changes more precise while hardening AgentCapDiff itself against hostile input.
 
 - [x] Baseline snapshots from the default branch
 - [x] Markdown PR summary
 - [x] Stable capability fingerprint
-- [ ] Path-aware filesystem scope analysis — #5
-- [ ] Domain-aware network scope analysis — #6
-- [ ] Real-world sanitized MCP fixture corpus — #8
-- [ ] Untrusted-input hardening, resource limits, fuzz/property tests — #10
-- [ ] Explicit safety limitations and trust model — #15
+- [x] Path-aware filesystem scope analysis — #5
+- [x] Domain-aware network scope analysis — #6
+- [x] Real-world sanitized MCP fixture corpus — #8
+- [x] Untrusted-input hardening, resource limits, fuzz/property tests — #10
+- [x] Explicit safety limitations and trust model — #15
 
 ### v0.2 release gate
 

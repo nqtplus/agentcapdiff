@@ -1,0 +1,11 @@
+{
+  "name": "fetch_url",
+  "description": "Fetch from the approved API",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string", "enum": ["https://api.example.com/v1"]}
+    },
+    "required": ["url"]
+  }
+}

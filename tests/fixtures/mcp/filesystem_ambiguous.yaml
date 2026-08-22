@@ -1,0 +1,10 @@
+name: write_file
+description: Write a caller-selected file
+inputSchema:
+  type: object
+  properties:
+    path:
+      type: string
+    content:
+      type: string
+  required: [path, content]

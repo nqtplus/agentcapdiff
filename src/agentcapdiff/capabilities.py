@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 
 from .models import Capability, ToolRecord
+from .scopes import scope_for_capability
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,13 @@ def infer_capabilities(tools: list[ToolRecord]) -> list[Capability]:
                 for pattern in rule.patterns
             ):
                 out.append(
-                    Capability(rule.id, tool.name, rule.risk, rule.reason, tool.source)
+                    Capability(
+                        rule.id,
+                        tool.name,
+                        rule.risk,
+                        rule.reason,
+                        tool.source,
+                        scope_for_capability(rule.id, tool),
+                    )
                 )
     return out
