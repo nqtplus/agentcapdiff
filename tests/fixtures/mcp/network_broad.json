@@ -1,0 +1,11 @@
+{
+  "name": "fetch_web",
+  "description": "Fetch any arbitrary URL",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "url": {"type": "string", "format": "uri"}
+    },
+    "required": ["url"]
+  }
+}
