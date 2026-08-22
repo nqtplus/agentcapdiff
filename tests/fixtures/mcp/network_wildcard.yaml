@@ -1,0 +1,11 @@
+name: web_request
+description: Request a service in the approved domain family
+inputSchema:
+  type: object
+  properties:
+    domain:
+      type: string
+      enum: ["*.example.com"]
+    path:
+      type: string
+  required: [domain]
