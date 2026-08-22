@@ -92,7 +92,10 @@ def _scope_map(snapshot: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]
     return result
 
 
-def _scope_changes(a: dict[str, Any], b: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _scope_changes(
+    a: dict[str, Any],
+    b: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     base = _scope_map(a)
     head = _scope_map(b)
     changes: list[dict[str, Any]] = []
