@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **early alpha**. The classifier is intentionally simple and explainable. Expect false positives while adapters and semantic scope rules mature.
+> Status: **early alpha**. The classifier is intentionally simple and explainable. Expect false positives and false negatives while adapters and semantic scope rules mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -21,12 +21,14 @@ AgentCapDiff treats agent capability as a reviewable artifact.
 
 ## Quick start
 
-Install directly from the repository:
+Install directly from the repository for evaluation:
 
 ```bash
 python -m pip install "git+https://github.com/nqtplus/agentcapdiff.git"
 agentcapdiff scan ./agent --policy agentcapdiff.yaml
 ```
+
+For production CI, pin a reviewed immutable commit SHA or trusted release tag instead of relying on a floating branch reference.
 
 Or for local development:
 
@@ -107,10 +109,10 @@ This makes capability expansion visible alongside normal test and security check
 
 ## GitHub Action
 
-Until a stable major-version tag is published, pin the action to a commit for production use. For evaluation against the current default branch:
+Until a stable major-version tag is published, pin the action to a reviewed immutable commit for production use. A floating branch is suitable only for evaluation or development:
 
 ```yaml
-- uses: nqtplus/agentcapdiff@main
+- uses: nqtplus/agentcapdiff@<reviewed-commit-sha>
   with:
     path: .
     policy: agentcapdiff.yaml
@@ -125,13 +127,19 @@ The repository also contains SARIF upload and CodeQL workflows.
 - MCP-like JSON/YAML tool objects with `name` + `inputSchema`
 - Generic nested `tools` collections
 
+Discovery treats these files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
+
 Planned adapters and scope analysis are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
 
 ## Security model
 
 AgentCapDiff is a **static policy aid**, not a sandbox, exploit scanner, runtime authorization system, or proof that an agent is safe. A clean scan must never be interpreted as permission to run untrusted tools with unrestricted credentials.
 
-AgentCapDiff does not import target project code or execute discovered tools. See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md).
+AgentCapDiff does not import target project code, execute discovered tools, probe discovered endpoints, or collect credentials. When effective permission scope cannot be established statically, the safe interpretation is **unknown**, not safe or restricted.
+
+Use AgentCapDiff as one layer of defense in depth alongside ordinary code review, runtime least-privilege authorization, sandboxing/isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
+
+See [SECURITY.md](SECURITY.md) and [docs/threat-model.md](docs/threat-model.md) for supported security posture, reporting, trust boundaries, and residual risks.
 
 ## Design principles
 
@@ -140,6 +148,7 @@ AgentCapDiff does not import target project code or execute discovered tools. Se
 3. **Least privilege by default** — powerful capabilities should be explicitly reviewed.
 4. **CI-native** — text, JSON, Markdown, SARIF, and stable exit behavior.
 5. **Framework-neutral** — adapters normalize into one small capability model.
+6. **Unknown is not safe** — unsupported or dynamic behavior must not silently become a reassuring result.
 
 ## Contributing
 
