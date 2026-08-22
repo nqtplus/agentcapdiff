@@ -8,8 +8,33 @@ from urllib.parse import urlsplit
 
 from .models import ScopeEvidence, ToolRecord
 
-PATH_NAMES = {"path", "paths", "file", "filepath", "file_path", "directory", "dir", "root", "allowed_path", "allowed_paths", "base_path"}
-NET_NAMES = {"url", "urls", "uri", "endpoint", "endpoints", "domain", "domains", "host", "hosts", "base_url", "allowed_domains", "allowed_hosts"}
+PATH_NAMES = {
+    "path",
+    "paths",
+    "file",
+    "filepath",
+    "file_path",
+    "directory",
+    "dir",
+    "root",
+    "allowed_path",
+    "allowed_paths",
+    "base_path",
+}
+NET_NAMES = {
+    "url",
+    "urls",
+    "uri",
+    "endpoint",
+    "endpoints",
+    "domain",
+    "domains",
+    "host",
+    "hosts",
+    "base_url",
+    "allowed_domains",
+    "allowed_hosts",
+}
 LITERALS = {"const", "enum", "default", "examples"}
 DYNAMIC = ("${", "{{", "}}", "<", ">")
 
@@ -36,12 +61,20 @@ def _literals(schema: dict[str, Any] | None, names: set[str]) -> list[str]:
             continue
         seen.add(id(current))
         if isinstance(current, list):
-            stack.extend((item, context) for item in current if isinstance(item, (dict, list)))
+            stack.extend(
+                (item, context)
+                for item in current
+                if isinstance(item, (dict, list))
+            )
             continue
         for key, value in current.items():
             key_l = str(key).lower()
             if key_l == "properties" and isinstance(value, dict):
-                stack.extend((child, str(name).lower()) for name, child in value.items() if isinstance(child, (dict, list)))
+                stack.extend(
+                    (child, str(name).lower())
+                    for name, child in value.items()
+                    if isinstance(child, (dict, list))
+                )
                 continue
             if context in names and key_l in LITERALS:
                 out.extend(_strings(value))
@@ -52,7 +85,11 @@ def _literals(schema: dict[str, Any] | None, names: set[str]) -> list[str]:
 
 def _path_description(text: str) -> list[str]:
     values: list[str] = []
-    for pattern in (r"(?:restricted|limited) to\s+([./~A-Za-z0-9_*?\\:-]+)", r"only (?:under|within|in)\s+([./~A-Za-z0-9_*?\\:-]+)"):
+    patterns = (
+        r"(?:restricted|limited) to\s+([./~A-Za-z0-9_*?\\:-]+)",
+        r"only (?:under|within|in)\s+([./~A-Za-z0-9_*?\\:-]+)",
+    )
+    for pattern in patterns:
         values.extend(m.group(1) for m in re.finditer(pattern, text, re.I))
     return values
 
@@ -76,8 +113,16 @@ def _path(value: str) -> str | None:
 
 def infer_filesystem_scope(tool: ToolRecord) -> ScopeEvidence:
     text = tool.description or ""
-    if re.search(r"\b(?:any|arbitrary|unrestricted)\s+(?:file|path|directory)", text, re.I):
-        return ScopeEvidence("broad", ("/**",), "Description explicitly permits arbitrary paths.")
+    if re.search(
+        r"\b(?:any|arbitrary|unrestricted)\s+(?:file|path|directory)",
+        text,
+        re.I,
+    ):
+        return ScopeEvidence(
+            "broad",
+            ("/**",),
+            "Description explicitly permits arbitrary paths.",
+        )
     raw = _literals(tool.input_schema, PATH_NAMES) + _path_description(text)
     if not raw:
         return ScopeEvidence()
@@ -85,17 +130,33 @@ def infer_filesystem_scope(tool: ToolRecord) -> ScopeEvidence:
     for value in raw:
         normalized = _path(value)
         if normalized is None:
-            return ScopeEvidence("unknown", (), "Path constraint is dynamic, traversing, or cannot be normalized safely.")
+            return ScopeEvidence(
+                "unknown",
+                (),
+                "Path constraint is dynamic, traversing, or cannot be normalized safely.",
+            )
         values.append(normalized)
     unique = tuple(sorted(set(values)))
     if "/**" in unique:
-        return ScopeEvidence("broad", unique, "Static input permits filesystem-root-wide access.")
-    return ScopeEvidence("restricted", unique, "Static input exposes a finite path constraint.")
+        return ScopeEvidence(
+            "broad",
+            unique,
+            "Static input permits filesystem-root-wide access.",
+        )
+    return ScopeEvidence(
+        "restricted",
+        unique,
+        "Static input exposes a finite path constraint.",
+    )
 
 
 def _net_description(text: str) -> list[str]:
     values: list[str] = []
-    for pattern in (r"(?:only|restricted|limited) to\s+(https?://[^\s,;]+)", r"(?:only|restricted|limited) to\s+((?:\*\.)?[A-Za-z0-9.-]+\.[A-Za-z]{2,})"):
+    patterns = (
+        r"(?:only|restricted|limited) to\s+(https?://[^\s,;]+)",
+        r"(?:only|restricted|limited) to\s+((?:\*\.)?[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+    )
+    for pattern in patterns:
         values.extend(m.group(1) for m in re.finditer(pattern, text, re.I))
     return values
 
@@ -104,7 +165,14 @@ def _net(value: str) -> str | None:
     raw = value.strip().rstrip(".,;)")
     if not raw or "\x00" in raw or any(marker in raw for marker in DYNAMIC):
         return None
-    if raw in {"*", "*.*", "http://*", "https://*", "http://**", "https://**"}:
+    if raw in {
+        "*",
+        "*.*",
+        "http://*",
+        "https://*",
+        "http://**",
+        "https://**",
+    }:
         return "*"
     if raw.startswith("*."):
         host = raw[2:].lower().strip(".")
@@ -129,8 +197,16 @@ def _net(value: str) -> str | None:
 
 def infer_network_scope(tool: ToolRecord) -> ScopeEvidence:
     text = tool.description or ""
-    if re.search(r"\b(?:any|arbitrary|unrestricted)\s+(?:url|domain|host|endpoint|website)", text, re.I):
-        return ScopeEvidence("broad", ("*",), "Description explicitly permits arbitrary destinations.")
+    if re.search(
+        r"\b(?:any|arbitrary|unrestricted)\s+(?:url|domain|host|endpoint|website)",
+        text,
+        re.I,
+    ):
+        return ScopeEvidence(
+            "broad",
+            ("*",),
+            "Description explicitly permits arbitrary destinations.",
+        )
     raw = _literals(tool.input_schema, NET_NAMES) + _net_description(text)
     if not raw:
         return ScopeEvidence()
@@ -138,12 +214,24 @@ def infer_network_scope(tool: ToolRecord) -> ScopeEvidence:
     for value in raw:
         normalized = _net(value)
         if normalized is None:
-            return ScopeEvidence("unknown", (), "Network destination is dynamic or cannot be normalized conservatively.")
+            return ScopeEvidence(
+                "unknown",
+                (),
+                "Network destination is dynamic or cannot be normalized conservatively.",
+            )
         values.append(normalized)
     unique = tuple(sorted(set(values)))
     if "*" in unique:
-        return ScopeEvidence("broad", unique, "Static input permits arbitrary network destinations.")
-    return ScopeEvidence("restricted", unique, "Static input exposes a finite destination constraint.")
+        return ScopeEvidence(
+            "broad",
+            unique,
+            "Static input permits arbitrary network destinations.",
+        )
+    return ScopeEvidence(
+        "restricted",
+        unique,
+        "Static input exposes a finite destination constraint.",
+    )
 
 
 def scope_for_capability(capability_id: str, tool: ToolRecord) -> ScopeEvidence:
@@ -191,5 +279,13 @@ def scope_records(capabilities: Iterable[Any]) -> list[dict[str, Any]]:
     records = []
     for cap in capabilities:
         if cap.id.startswith("filesystem.") or cap.id == "network.external":
-            records.append({"capability": cap.id, "tool": cap.tool, "kind": cap.scope.kind, "values": list(cap.scope.values), "reason": cap.scope.reason})
+            records.append(
+                {
+                    "capability": cap.id,
+                    "tool": cap.tool,
+                    "kind": cap.scope.kind,
+                    "values": list(cap.scope.values),
+                    "reason": cap.scope.reason,
+                }
+            )
     return sorted(records, key=lambda item: (item["capability"], item["tool"]))
