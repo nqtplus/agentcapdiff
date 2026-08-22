@@ -123,7 +123,7 @@ def discover_tools(
 
         try:
             data, size = _read(path, limits)
-        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError):
             # Malformed/unreadable documents are ignored; resource-limit violations are not.
             continue
 
