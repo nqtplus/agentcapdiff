@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import ScanResult
+from .scopes import scope_is_expansion, scope_records
 
 
 def capability_fingerprint(capabilities: Iterable[str]) -> str:
@@ -55,6 +56,7 @@ def snapshot_payload(result: ScanResult) -> dict[str, Any]:
         "capabilities": capability_ids,
         "capability_fingerprint": capability_fingerprint(capability_ids),
         "tools": sorted({t.name for t in result.tools}),
+        "scopes": scope_records(result.capabilities),
         "findings": _snapshot_findings(result),
     }
 
@@ -74,6 +76,44 @@ def _snapshot_fingerprint(snapshot: dict[str, Any]) -> str:
     return capability_fingerprint(capabilities)
 
 
+def _scope_map(snapshot: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
+    result: dict[tuple[str, str], dict[str, Any]] = {}
+    for item in snapshot.get("scopes", []):
+        if not isinstance(item, dict):
+            continue
+        capability = str(item.get("capability", ""))
+        tool = str(item.get("tool", ""))
+        if capability and tool:
+            result[(capability, tool)] = {
+                "kind": str(item.get("kind", "unknown")),
+                "values": sorted(str(v) for v in item.get("values", [])),
+                "reason": str(item.get("reason", "")),
+            }
+    return result
+
+
+def _scope_changes(a: dict[str, Any], b: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    base = _scope_map(a)
+    head = _scope_map(b)
+    changes: list[dict[str, Any]] = []
+    expansions: list[dict[str, Any]] = []
+    for key in sorted(set(base) | set(head)):
+        before = base.get(key, {"kind": "unknown", "values": [], "reason": ""})
+        after = head.get(key, {"kind": "unknown", "values": [], "reason": ""})
+        if before == after:
+            continue
+        item = {
+            "capability": key[0],
+            "tool": key[1],
+            "before": before,
+            "after": after,
+        }
+        changes.append(item)
+        if scope_is_expansion(before, after):
+            expansions.append(item)
+    return changes, expansions
+
+
 def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
     a = json.loads(base.read_text(encoding="utf-8"))
     b = json.loads(head.read_text(encoding="utf-8"))
@@ -83,11 +123,14 @@ def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
     head_risk = int(b.get("risk_score", 0))
     base_fingerprint = _snapshot_fingerprint(a)
     head_fingerprint = _snapshot_fingerprint(b)
+    scope_changes, scope_expansions = _scope_changes(a, b)
     return {
         "capabilities_added": sorted(bc - ac),
         "capabilities_removed": sorted(ac - bc),
         "tools_added": sorted(bt - at),
         "tools_removed": sorted(at - bt),
+        "scope_changes": scope_changes,
+        "scope_expansions": scope_expansions,
         "base_risk_score": base_risk,
         "head_risk_score": head_risk,
         "risk_delta": head_risk - base_risk,
