@@ -47,13 +47,25 @@ def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
     # OpenAI-style: {"type":"function", "function":{"name":...,"description":...}}
     fn = item.get("function")
     if isinstance(fn, dict) and isinstance(fn.get("name"), str):
-        return ToolRecord(str(fn["name"]), str(fn.get("description", "")), source)
+        schema = fn.get("parameters")
+        return ToolRecord(
+            str(fn["name"]),
+            str(fn.get("description", "")),
+            source,
+            schema if isinstance(schema, dict) else None,
+        )
 
     # MCP-like or generic tool object: {"name":..., "description":..., "inputSchema":...}
     if isinstance(item.get("name"), str) and (
         "inputSchema" in item or "input_schema" in item or item.get("type") == "tool"
     ):
-        return ToolRecord(str(item["name"]), str(item.get("description", "")), source)
+        schema = item.get("inputSchema", item.get("input_schema"))
+        return ToolRecord(
+            str(item["name"]),
+            str(item.get("description", "")),
+            source,
+            schema if isinstance(schema, dict) else None,
+        )
     return None
 
 
