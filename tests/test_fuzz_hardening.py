@@ -8,7 +8,6 @@ import yaml
 from agentcapdiff.discovery import DiscoveryLimitError, DiscoveryLimits, discover_tools
 from agentcapdiff.formats import markdown_diff_report
 
-
 ALPHABET = string.ascii_letters + string.digits + "<>[](){}*_#!|`\\\n\r:/.-"
 
 
