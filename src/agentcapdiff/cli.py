@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .diffing import compare_snapshots, write_snapshot
+from .discovery import DiscoveryLimitError
 from .formats import json_report, markdown_diff_report, sarif_report, text_report
 from .scanner import scan
 
@@ -55,13 +57,23 @@ def _write_or_print(report: str, output: str | None) -> None:
         print(report)
 
 
+def _scan_or_report_error(path: Path, policy: Path | None):
+    try:
+        return scan(path, policy)
+    except (DiscoveryLimitError, FileNotFoundError) as exc:
+        print(f"agentcapdiff: unsafe or invalid scan input: {exc}", file=sys.stderr)
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "scan":
         policy = Path(args.policy) if args.policy else None
         if policy and not policy.exists():
             policy = None
-        result = scan(Path(args.path), policy)
+        result = _scan_or_report_error(Path(args.path), policy)
+        if result is None:
+            return 3
         report = {
             "text": text_report,
             "json": json_report,
@@ -74,7 +86,10 @@ def main(argv: list[str] | None = None) -> int:
         policy = Path(args.policy) if args.policy else None
         if policy and not policy.exists():
             policy = None
-        write_snapshot(scan(Path(args.path), policy), Path(args.output))
+        result = _scan_or_report_error(Path(args.path), policy)
+        if result is None:
+            return 3
+        write_snapshot(result, Path(args.output))
         return 0
 
     if args.command == "diff":
