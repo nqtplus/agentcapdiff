@@ -9,6 +9,14 @@ class ToolRecord:
     name: str
     description: str = ""
     source: str = ""
+    input_schema: dict[str, Any] | None = field(default=None, compare=False, repr=False)
+
+
+@dataclass(frozen=True)
+class ScopeEvidence:
+    kind: str = "unknown"
+    values: tuple[str, ...] = ()
+    reason: str = "Static input does not establish an effective scope."
 
 
 @dataclass(frozen=True)
@@ -18,6 +26,7 @@ class Capability:
     risk: int
     reason: str
     source: str = ""
+    scope: ScopeEvidence = field(default_factory=ScopeEvidence)
 
 
 @dataclass(frozen=True)
@@ -58,7 +67,10 @@ class ScanResult:
         return {
             "risk_score": self.risk_score,
             "max_severity": self.max_severity,
-            "tools": [asdict(x) for x in self.tools],
+            "tools": [
+                {"name": x.name, "description": x.description, "source": x.source}
+                for x in self.tools
+            ],
             "capabilities": [asdict(x) for x in self.capabilities],
             "findings": [asdict(x) for x in self.findings],
         }
