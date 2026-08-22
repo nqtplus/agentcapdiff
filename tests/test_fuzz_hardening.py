@@ -4,7 +4,6 @@ import string
 from pathlib import Path
 
 import yaml
-
 from agentcapdiff.discovery import DiscoveryLimitError, DiscoveryLimits, discover_tools
 from agentcapdiff.formats import markdown_diff_report
 
