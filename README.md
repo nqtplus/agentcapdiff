@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.3 — IN_PROGRESS.** v0.2.0 remains the last completed milestone. v0.3 is building a versioned universal capability schema and adapter-conformance layer. Static adapter support now covers MCP, OpenAI/OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata on the active development branch; the v0.3 release remains gated on conformance and required CI/security checks. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while schema coverage matures. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.3.0 alpha — universal capability schema + adapter conformance complete.** Static adapter support covers MCP, OpenAI/OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while schema coverage matures. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
