@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.2.0 alpha — semantic scope + safety foundation complete.** The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while adapters and schema coverage mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.3 — IN_PROGRESS.** v0.2.0 remains the last completed milestone. v0.3 is building a versioned universal capability schema and adapter-conformance layer; OpenAI-style and MCP normalization are implemented first while Claude, LangGraph/LangChain, and CrewAI adapters remain roadmap work. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while adapters and schema coverage mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -76,6 +76,12 @@ v0.2 keeps existing capability IDs while attaching separate static scope evidenc
 Examples of meaningful review changes include `./reports/**` → `/**` and `api.example.com` → arbitrary network access. Dynamic paths, traversal-like paths, unconstrained URL fields, and ambiguous metadata remain `unknown`; AgentCapDiff never upgrades uncertainty into a reassuring restriction.
 
 Scope evidence is derived only from static tool metadata. AgentCapDiff does not execute tool code, resolve DNS, contact discovered endpoints, or prove that runtime enforcement matches the declared schema. See [docs/scopes.md](docs/scopes.md).
+
+## Universal capability schema
+
+v0.3 adds an explicit framework-neutral capability record with a versioned schema and first-class `scope`, `evidence`, and `confidence`. Recognized OpenAI-style and MCP inputs retain adapter provenance as evidence while normalizing equivalent powers to the same capability IDs and conservative scope semantics.
+
+Snapshots remain backward-readable: the v0.2 capability ID list and fingerprint stay in place while v0.3 adds `capability_schema_version` and `capability_records`. Unsupported or ambiguous framework behavior remains unknown rather than being treated as safe. See [docs/capability-schema.md](docs/capability-schema.md).
 
 ## Snapshots and diffs
 
@@ -153,7 +159,7 @@ AgentCapDiff does not import target project code, execute discovered tools, prob
 
 Use AgentCapDiff as one layer of defense in depth alongside ordinary code review, runtime least-privilege authorization, sandboxing/isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
 
-See [SECURITY.md](SECURITY.md), [docs/threat-model.md](docs/threat-model.md), and [docs/scopes.md](docs/scopes.md) for supported security posture, reporting, trust boundaries, scope semantics, and residual risks.
+See [SECURITY.md](SECURITY.md), [docs/threat-model.md](docs/threat-model.md), [docs/scopes.md](docs/scopes.md), and [docs/capability-schema.md](docs/capability-schema.md) for supported security posture, reporting, trust boundaries, scope/schema semantics, and residual risks.
 
 ## Design principles
 
