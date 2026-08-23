@@ -2,6 +2,24 @@
 
 All notable changes will be documented here.
 
+## [0.3.0] - 2026-08-23
+
+### Added
+- Versioned universal capability schema with first-class `scope`, `evidence`, and `confidence`
+- Backward-readable snapshot capability records while preserving v0.2 capability IDs/fingerprints
+- Static adapter provenance for MCP, OpenAI API-style tools, OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata
+- Deterministic cross-framework adapter conformance suite for equivalent filesystem/network privileges
+- Conformance checks that dynamic scope remains `unknown` and framework representation cannot weaken deny-policy decisions
+
+### Changed
+- Ambiguous `args_schema` metadata remains generic/low-confidence instead of guessing framework provenance
+- Adapter documentation now states explicit static-only support boundaries and schema-evolution rules
+- Project/version metadata finalized at `0.3.0` only after v0.3 implementation gates passed
+
+### Security
+- Framework adapters remain fully static and do not import/execute target SDK code or contact discovered endpoints
+- Unknown, runtime-generated, unsupported, or ambiguous behavior is never promoted to known-safe/restricted solely for framework coverage
+
 ## [0.2.0] - 2026-08-22
 
 ### Added
