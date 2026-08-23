@@ -72,18 +72,18 @@ Goal: make capability changes more precise while hardening AgentCapDiff itself a
 - scope inference distinguishes restricted, broad, and unknown
 - security regression tests cover parser, path, and output-injection classes
 
-## v0.3 — Universal capability schema
+## v0.3 — Universal capability schema ✅
 
 Goal: establish the main interoperability moat instead of growing framework-specific scanners.
 
 - [x] Versioned universal capability schema — #11
 - [x] First-class `scope`, `evidence`, and `confidence`
 - [x] MCP adapter conformance
-- [ ] OpenAI Agents SDK adapter
-- [ ] Claude tool-schema adapter
-- [ ] LangGraph/LangChain adapter
-- [ ] CrewAI adapter
-- [ ] Adapter conformance suite that detects lost or weakened privilege information
+- [x] OpenAI Agents SDK adapter
+- [x] Claude tool-schema adapter
+- [x] LangGraph/LangChain adapter
+- [x] CrewAI adapter
+- [x] Adapter conformance suite that detects lost or weakened privilege information
 
 ### v0.3 release gate
 

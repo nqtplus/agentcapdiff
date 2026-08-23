@@ -9,9 +9,9 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 > **What can this agent do now that it could not do before?**
 
-It inventories tool capabilities from OpenAI-style and MCP-like tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
+It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.3 — IN_PROGRESS.** v0.2.0 remains the last completed milestone. v0.3 is building a versioned universal capability schema and adapter-conformance layer; OpenAI-style and MCP normalization are implemented first while Claude, LangGraph/LangChain, and CrewAI adapters remain roadmap work. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while adapters and schema coverage mature. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.3.0 alpha — universal capability schema + adapter conformance complete.** Static adapter support covers MCP, OpenAI/OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while schema coverage matures. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -79,9 +79,11 @@ Scope evidence is derived only from static tool metadata. AgentCapDiff does not 
 
 ## Universal capability schema
 
-v0.3 adds an explicit framework-neutral capability record with a versioned schema and first-class `scope`, `evidence`, and `confidence`. Recognized OpenAI-style and MCP inputs retain adapter provenance as evidence while normalizing equivalent powers to the same capability IDs and conservative scope semantics.
+v0.3 adds an explicit framework-neutral capability record with a versioned schema and first-class `scope`, `evidence`, and `confidence`. Supported static framework shapes retain adapter provenance as evidence while normalizing equivalent powers to the same capability IDs, risk semantics, policy decisions, and conservative scope semantics.
 
-Snapshots remain backward-readable: the v0.2 capability ID list and fingerprint stay in place while v0.3 adds `capability_schema_version` and `capability_records`. Unsupported or ambiguous framework behavior remains unknown rather than being treated as safe. See [docs/capability-schema.md](docs/capability-schema.md).
+The adapter conformance suite checks equivalent filesystem/network privileges across MCP, OpenAI, OpenAI Agents SDK, Claude, LangChain, LangGraph-compatible, and CrewAI-style serialized metadata. It also verifies that dynamic scope remains `unknown` and that representing the same privilege through a different framework cannot silently weaken a deny-policy decision.
+
+Snapshots remain backward-readable: the v0.2 capability ID list and fingerprint stay in place while v0.3 adds `capability_schema_version` and `capability_records`. Unsupported, runtime-generated, or ambiguous framework behavior remains unknown/generic rather than being treated as safe. See [docs/capability-schema.md](docs/capability-schema.md).
 
 ## Snapshots and diffs
 
@@ -139,17 +141,23 @@ Until a stable major-version tag is published, pin the action to a reviewed immu
 
 The repository also contains SARIF upload, CodeQL, PR capability-diff, and project-state consistency workflows.
 
-## Supported inputs
+## Supported static inputs
 
-- OpenAI-style JSON/YAML function tools
-- MCP-like JSON/YAML tool objects with `name` + `inputSchema`
-- Generic nested `tools` collections
+- OpenAI API-style JSON/YAML function tools (`function.parameters` or direct `parameters`)
+- OpenAI Agents SDK-style serialized function tools (`params_json_schema`)
+- MCP JSON/YAML tool objects (`name` + `inputSchema`)
+- Claude client-tool JSON/YAML objects (`name` + `input_schema`)
+- LangChain/LangGraph-compatible serialized tool metadata (`args_schema` / `tool_call_schema` with static provenance signals)
+- CrewAI-style serialized tool metadata (`args_schema` with CrewAI provenance signals)
+- Generic nested `tools` collections, retained at lower confidence when framework attribution is ambiguous
 
-Discovery treats these files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
+Framework support means recognition of **static serialized metadata only**. AgentCapDiff does not import Python/JavaScript SDKs, instantiate decorators/classes, traverse live object graphs, or execute target code to materialize a schema. Runtime-only or unsupported shapes therefore remain outside positive adapter attribution rather than being silently labeled safe.
+
+Discovery treats scanned files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
 
 The v0.2 hardening suite includes malformed/pathological input cases, deterministic fuzz/property tests, path traversal/symlink regression coverage, output-injection regression tests, and checks that discovered endpoints do not trigger network access.
 
-Planned adapters and future capability-schema work are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
+Roadmap and future capability work are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
 
 ## Security model
 
@@ -158,22 +166,3 @@ AgentCapDiff is a **static policy aid**, not a sandbox, exploit scanner, runtime
 AgentCapDiff does not import target project code, execute discovered tools, probe discovered endpoints, or collect credentials. When effective permission scope cannot be established statically, the safe interpretation is **unknown**, not safe or restricted.
 
 Use AgentCapDiff as one layer of defense in depth alongside ordinary code review, runtime least-privilege authorization, sandboxing/isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
-
-See [SECURITY.md](SECURITY.md), [docs/threat-model.md](docs/threat-model.md), [docs/scopes.md](docs/scopes.md), and [docs/capability-schema.md](docs/capability-schema.md) for supported security posture, reporting, trust boundaries, scope/schema semantics, and residual risks.
-
-## Design principles
-
-1. **Explainable over magical** — every inferred capability must have a visible reason.
-2. **Diffs over dashboards** — PR reviewers need to see change, not just a score.
-3. **Least privilege by default** — powerful capabilities should be explicitly reviewed.
-4. **CI-native** — text, JSON, Markdown, SARIF, and stable exit behavior.
-5. **Framework-neutral** — adapters normalize into one small capability model.
-6. **Unknown is not safe** — unsupported or dynamic behavior must not silently become a reassuring result.
-
-## Contributing
-
-External bug reports, adapter examples, false-positive fixtures, and capability-taxonomy discussions are especially valuable. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
