@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+UNIVERSAL_CAPABILITY_SCHEMA_VERSION = "1"
+
 
 @dataclass(frozen=True)
 class ToolRecord:
@@ -10,6 +12,7 @@ class ToolRecord:
     description: str = ""
     source: str = ""
     input_schema: dict[str, Any] | None = field(default=None, compare=False, repr=False)
+    adapter: str = "generic"
 
 
 @dataclass(frozen=True)
@@ -20,6 +23,13 @@ class ScopeEvidence:
 
 
 @dataclass(frozen=True)
+class CapabilityEvidence:
+    adapter: str = "generic"
+    source: str = ""
+    signal: str = "Static name/description pattern match."
+
+
+@dataclass(frozen=True)
 class Capability:
     id: str
     tool: str
@@ -27,6 +37,9 @@ class Capability:
     reason: str
     source: str = ""
     scope: ScopeEvidence = field(default_factory=ScopeEvidence)
+    evidence: tuple[CapabilityEvidence, ...] = ()
+    confidence: str = "medium"
+    schema_version: str = UNIVERSAL_CAPABILITY_SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
@@ -68,7 +81,12 @@ class ScanResult:
             "risk_score": self.risk_score,
             "max_severity": self.max_severity,
             "tools": [
-                {"name": x.name, "description": x.description, "source": x.source}
+                {
+                    "name": x.name,
+                    "description": x.description,
+                    "source": x.source,
+                    "adapter": x.adapter,
+                }
                 for x in self.tools
             ],
             "capabilities": [asdict(x) for x in self.capabilities],
