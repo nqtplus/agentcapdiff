@@ -71,6 +71,16 @@ RULES = (
     ),
 )
 
+RECOGNIZED_STATIC_ADAPTERS = {
+    "openai",
+    "openai-agents",
+    "mcp",
+    "claude",
+    "langchain",
+    "langgraph",
+    "crewai",
+}
+
 
 def infer_capabilities(tools: list[ToolRecord]) -> list[Capability]:
     out: list[Capability] = []
@@ -84,7 +94,7 @@ def infer_capabilities(tools: list[ToolRecord]) -> list[Capability]:
             )
             if matched:
                 adapter = tool.adapter or "generic"
-                confidence = "medium" if adapter in {"openai", "mcp"} else "low"
+                confidence = "medium" if adapter in RECOGNIZED_STATIC_ADAPTERS else "low"
                 out.append(
                     Capability(
                         id=rule.id,
