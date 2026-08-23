@@ -18,25 +18,47 @@ jobs:
         run: |
           from pathlib import Path
           import re
-          import sys
 
           roadmap = Path("ROADMAP.md").read_text(encoding="utf-8")
           pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
           readme = Path("README.md").read_text(encoding="utf-8")
+          init = Path("src/agentcapdiff/__init__.py").read_text(encoding="utf-8")
 
-          m = re.search(r'^version = "([^"]+)"$', pyproject, re.M)
-          if not m:
-              raise SystemExit("pyproject.toml has no project version")
-          version = m.group(1)
+          package_match = re.search(r'^version = "([^"]+)"$', pyproject, re.M)
+          runtime_match = re.search(r'^__version__ = "([^"]+)"$', init, re.M)
+          if not package_match or not runtime_match:
+              raise SystemExit("version metadata missing")
+          version = package_match.group(1)
+          if runtime_match.group(1) != version:
+              raise SystemExit("pyproject/runtime version mismatch")
 
-          active = re.search(r"## (v\d+\.\d+) — [^\n]+\n(?:.*\n){0,3}", roadmap)
-          if not active:
-              raise SystemExit("ROADMAP.md has no version section")
+          sections = re.findall(r"## (v\d+\.\d+) — ([^\n]+)(.*?)(?=\n## v\d+\.\d+|\n## What|\Z)", roadmap, re.S)
+          if not sections:
+              raise SystemExit("ROADMAP.md has no version sections")
 
-          incomplete_v02 = bool(re.search(r"## v0\.2[^#]+- \[ \]", roadmap, re.S))
-          if incomplete_v02 and version.startswith("0.2.0") and not version.endswith(".dev0"):
-              raise SystemExit("v0.2 is incomplete but package metadata claims a final 0.2.0 release")
-          if "v0.2" in readme and "IN_PROGRESS" in readme and version == "0.1.0":
-              raise SystemExit("README targets v0.2 but pyproject still advertises 0.1.0")
+          incomplete = []
+          for label, _, body in sections:
+              if "- [ ]" in body:
+                  incomplete.append(label)
+
+          target_match = re.search(r"Status:\s*\*\*(v\d+\.\d+)[^*]*IN_PROGRESS", readme)
+          if target_match:
+              target = target_match.group(1)
+              expected_prefix = target.removeprefix("v") + ".0"
+              if not version.startswith(expected_prefix) or not version.endswith(".dev0"):
+                  raise SystemExit(
+                      f"README targets {target} IN_PROGRESS but version is {version}; expected {expected_prefix}.dev0"
+                  )
+              if target not in incomplete:
+                  raise SystemExit(f"README marks {target} IN_PROGRESS but roadmap has no unchecked item")
+          else:
+              final_match = re.search(r"Status:\s*\*\*(v\d+\.\d+)\.0[^*]*complete", readme, re.I)
+              if final_match:
+                  final_target = final_match.group(1)
+                  expected = final_target.removeprefix("v") + ".0"
+                  if version != expected:
+                      raise SystemExit(
+                          f"README marks {final_target} complete but package version is {version}"
+                      )
 
           print(f"project state metadata consistent: version={version}")
