@@ -43,41 +43,95 @@ def _read(path: Path, limits: DiscoveryLimits) -> tuple[Any, int]:
     return yaml.safe_load(text), size
 
 
+def _schema(item: dict[str, Any], key: str) -> dict[str, Any] | None:
+    value = item.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def _framework_hint(item: dict[str, Any]) -> str:
+    """Return only explicit/static framework hints; never import target framework code."""
+    values: list[str] = []
+    for key in ("framework", "adapter", "provider", "library", "class_name", "__class__"):
+        value = item.get(key)
+        if isinstance(value, str):
+            values.append(value)
+    identifier = item.get("id")
+    if isinstance(identifier, str):
+        values.append(identifier)
+    elif isinstance(identifier, list):
+        values.extend(str(part) for part in identifier if isinstance(part, (str, int)))
+    return " ".join(values).lower()
+
+
 def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
-    # OpenAI-style: {"type":"function", "function":{"name":...,"description":...}}
+    # OpenAI API-style: {"type":"function", "function":{"name":..., "parameters":...}}
     fn = item.get("function")
     if isinstance(fn, dict) and isinstance(fn.get("name"), str):
-        schema = fn.get("parameters")
+        schema = _schema(fn, "parameters")
         return ToolRecord(
             str(fn["name"]),
             str(fn.get("description", "")),
             source,
-            schema if isinstance(schema, dict) else None,
+            schema,
             "openai",
         )
 
-    # MCP tool object: {"name":..., "description":..., "inputSchema":...}
-    if isinstance(item.get("name"), str) and (
-        "inputSchema" in item or "input_schema" in item
-    ):
-        schema = item.get("inputSchema", item.get("input_schema"))
-        return ToolRecord(
-            str(item["name"]),
-            str(item.get("description", "")),
-            source,
-            schema if isinstance(schema, dict) else None,
-            "mcp",
-        )
+    name = item.get("name")
+    if not isinstance(name, str):
+        return None
+    description = str(item.get("description", ""))
 
-    # Generic nested tool object. Keep it explicit rather than pretending it is MCP.
-    if isinstance(item.get("name"), str) and item.get("type") == "tool":
-        return ToolRecord(
-            str(item["name"]),
-            str(item.get("description", "")),
-            source,
-            None,
-            "generic",
-        )
+    # OpenAI Agents SDK FunctionTool exposes params_json_schema as a static JSON schema.
+    params_json_schema = _schema(item, "params_json_schema")
+    if params_json_schema is not None:
+        return ToolRecord(name, description, source, params_json_schema, "openai-agents")
+
+    # OpenAI Responses/API direct function-tool shape.
+    parameters = _schema(item, "parameters")
+    if item.get("type") == "function" and parameters is not None:
+        return ToolRecord(name, description, source, parameters, "openai")
+
+    # MCP Tool uses camel-case inputSchema.
+    input_schema_mcp = _schema(item, "inputSchema")
+    if input_schema_mcp is not None:
+        return ToolRecord(name, description, source, input_schema_mcp, "mcp")
+
+    # Claude client-tool definitions use snake-case input_schema.
+    input_schema_claude = _schema(item, "input_schema")
+    if input_schema_claude is not None:
+        return ToolRecord(name, description, source, input_schema_claude, "claude")
+
+    hint = _framework_hint(item)
+    args_schema = _schema(item, "args_schema")
+    tool_call_schema = _schema(item, "tool_call_schema")
+
+    # CrewAI BaseTool-style serialized metadata. result_as_answer is CrewAI-specific
+    # evidence; an explicit framework hint is also accepted when present in static data.
+    if args_schema is not None and ("crewai" in hint or "result_as_answer" in item):
+        return ToolRecord(name, description, source, args_schema, "crewai")
+
+    # LangChain BaseTool / LangGraph tool-compatible metadata. LangGraph commonly consumes
+    # LangChain-compatible tools; explicit provenance is retained when statically supplied.
+    if tool_call_schema is not None:
+        adapter = "langgraph" if "langgraph" in hint else "langchain"
+        return ToolRecord(name, description, source, tool_call_schema, adapter)
+    if args_schema is not None and (
+        "langchain" in hint
+        or "langgraph" in hint
+        or "return_direct" in item
+        or "response_format" in item
+    ):
+        adapter = "langgraph" if "langgraph" in hint else "langchain"
+        return ToolRecord(name, description, source, args_schema, adapter)
+
+    # Ambiguous args_schema still carries useful static schema evidence, but framework
+    # attribution is deliberately generic rather than guessed.
+    if args_schema is not None:
+        return ToolRecord(name, description, source, args_schema, "generic")
+
+    # Generic nested tool object. Keep it explicit rather than pretending it is a framework.
+    if item.get("type") == "tool":
+        return ToolRecord(name, description, source, None, "generic")
     return None
 
 
