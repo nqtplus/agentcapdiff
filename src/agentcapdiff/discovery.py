@@ -53,11 +53,12 @@ def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
             str(fn.get("description", "")),
             source,
             schema if isinstance(schema, dict) else None,
+            "openai",
         )
 
-    # MCP-like or generic tool object: {"name":..., "description":..., "inputSchema":...}
+    # MCP tool object: {"name":..., "description":..., "inputSchema":...}
     if isinstance(item.get("name"), str) and (
-        "inputSchema" in item or "input_schema" in item or item.get("type") == "tool"
+        "inputSchema" in item or "input_schema" in item
     ):
         schema = item.get("inputSchema", item.get("input_schema"))
         return ToolRecord(
@@ -65,6 +66,17 @@ def _tool_from_mapping(item: dict[str, Any], source: str) -> ToolRecord | None:
             str(item.get("description", "")),
             source,
             schema if isinstance(schema, dict) else None,
+            "mcp",
+        )
+
+    # Generic nested tool object. Keep it explicit rather than pretending it is MCP.
+    if isinstance(item.get("name"), str) and item.get("type") == "tool":
+        return ToolRecord(
+            str(item["name"]),
+            str(item.get("description", "")),
+            source,
+            None,
+            "generic",
         )
     return None
 
