@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .models import Capability, ToolRecord
+from .models import Capability, CapabilityEvidence, ToolRecord
 from .scopes import scope_for_capability
 
 
@@ -77,18 +77,30 @@ def infer_capabilities(tools: list[ToolRecord]) -> list[Capability]:
     for tool in tools:
         haystack = f"{tool.name} {tool.description}".lower()
         for rule in RULES:
-            if any(
-                re.search(pattern, haystack, flags=re.IGNORECASE)
+            matched = tuple(
+                pattern
                 for pattern in rule.patterns
-            ):
+                if re.search(pattern, haystack, flags=re.IGNORECASE)
+            )
+            if matched:
+                adapter = tool.adapter or "generic"
+                confidence = "medium" if adapter in {"openai", "mcp"} else "low"
                 out.append(
                     Capability(
-                        rule.id,
-                        tool.name,
-                        rule.risk,
-                        rule.reason,
-                        tool.source,
-                        scope_for_capability(rule.id, tool),
+                        id=rule.id,
+                        tool=tool.name,
+                        risk=rule.risk,
+                        reason=rule.reason,
+                        source=tool.source,
+                        scope=scope_for_capability(rule.id, tool),
+                        evidence=(
+                            CapabilityEvidence(
+                                adapter=adapter,
+                                source=tool.source,
+                                signal="name/description matched: " + ", ".join(matched),
+                            ),
+                        ),
+                        confidence=confidence,
                     )
                 )
     return out

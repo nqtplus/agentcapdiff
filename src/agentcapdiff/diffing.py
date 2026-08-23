@@ -6,7 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .models import ScanResult
+from .models import UNIVERSAL_CAPABILITY_SCHEMA_VERSION, ScanResult
+from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
 
 
@@ -49,11 +50,21 @@ def _snapshot_findings(result: ScanResult) -> list[dict[str, Any]]:
 
 def snapshot_payload(result: ScanResult) -> dict[str, Any]:
     capability_ids = sorted({c.id for c in result.capabilities})
+    capability_records = [capability_to_record(cap) for cap in result.capabilities]
+    capability_records.sort(
+        key=lambda item: (
+            str(item.get("id", "")),
+            str(item.get("tool", "")),
+            str(item.get("source", "")),
+        )
+    )
     return {
         "schema": 1,
+        "capability_schema_version": UNIVERSAL_CAPABILITY_SCHEMA_VERSION,
         "risk_score": result.risk_score,
         "max_severity": result.max_severity,
         "capabilities": capability_ids,
+        "capability_records": capability_records,
         "capability_fingerprint": capability_fingerprint(capability_ids),
         "tools": sorted({t.name for t in result.tools}),
         "scopes": scope_records(result.capabilities),
