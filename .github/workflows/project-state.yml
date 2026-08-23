@@ -22,6 +22,7 @@ jobs:
           roadmap = Path("ROADMAP.md").read_text(encoding="utf-8")
           pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
           readme = Path("README.md").read_text(encoding="utf-8")
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
           init = Path("src/agentcapdiff/__init__.py").read_text(encoding="utf-8")
 
           package_match = re.search(r'^version = "([^"]+)"$', pyproject, re.M)
@@ -32,12 +33,18 @@ jobs:
           if runtime_match.group(1) != version:
               raise SystemExit("pyproject/runtime version mismatch")
 
-          sections = re.findall(r"## (v\d+\.\d+) — ([^\n]+)(.*?)(?=\n## v\d+\.\d+|\n## What|\Z)", roadmap, re.S)
+          sections = re.findall(
+              r"## (v\d+\.\d+) — ([^\n]+)(.*?)(?=\n## v\d+\.\d+|\n## What|\Z)",
+              roadmap,
+              re.S,
+          )
           if not sections:
               raise SystemExit("ROADMAP.md has no version sections")
 
           incomplete = []
-          for label, _, body in sections:
+          section_titles = {}
+          for label, title, body in sections:
+              section_titles[label] = title
               if "- [ ]" in body:
                   incomplete.append(label)
 
@@ -47,18 +54,37 @@ jobs:
               expected_prefix = target.removeprefix("v") + ".0"
               if not version.startswith(expected_prefix) or not version.endswith(".dev0"):
                   raise SystemExit(
-                      f"README targets {target} IN_PROGRESS but version is {version}; expected {expected_prefix}.dev0"
+                      f"README targets {target} IN_PROGRESS but version is {version}; "
+                      f"expected {expected_prefix}.dev0"
                   )
               if target not in incomplete:
-                  raise SystemExit(f"README marks {target} IN_PROGRESS but roadmap has no unchecked item")
+                  raise SystemExit(
+                      f"README marks {target} IN_PROGRESS but roadmap has no unchecked item"
+                  )
           else:
-              final_match = re.search(r"Status:\s*\*\*(v\d+\.\d+)\.0[^*]*complete", readme, re.I)
+              final_match = re.search(
+                  r"Status:\s*\*\*(v\d+\.\d+)\.0[^*]*complete",
+                  readme,
+                  re.I,
+              )
               if final_match:
                   final_target = final_match.group(1)
                   expected = final_target.removeprefix("v") + ".0"
                   if version != expected:
                       raise SystemExit(
                           f"README marks {final_target} complete but package version is {version}"
+                      )
+                  if final_target in incomplete:
+                      raise SystemExit(
+                          f"README marks {final_target} complete but ROADMAP.md still has unchecked items"
+                      )
+                  if "✅" not in section_titles.get(final_target, ""):
+                      raise SystemExit(
+                          f"README marks {final_target} complete but roadmap heading lacks completion marker"
+                      )
+                  if f"## [{version}]" not in changelog:
+                      raise SystemExit(
+                          f"README marks {final_target} complete but CHANGELOG.md lacks [{version}]"
                       )
 
           print(f"project state metadata consistent: version={version}")
