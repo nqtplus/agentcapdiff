@@ -76,9 +76,9 @@ Goal: make capability changes more precise while hardening AgentCapDiff itself a
 
 Goal: establish the main interoperability moat instead of growing framework-specific scanners.
 
-- [ ] Versioned universal capability schema — #11
-- [ ] First-class `scope`, `evidence`, and `confidence`
-- [ ] MCP adapter conformance
+- [x] Versioned universal capability schema — #11
+- [x] First-class `scope`, `evidence`, and `confidence`
+- [x] MCP adapter conformance
 - [ ] OpenAI Agents SDK adapter
 - [ ] Claude tool-schema adapter
 - [ ] LangGraph/LangChain adapter
