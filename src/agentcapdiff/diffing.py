@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .models import ScanResult, UNIVERSAL_CAPABILITY_SCHEMA_VERSION
+from .models import UNIVERSAL_CAPABILITY_SCHEMA_VERSION, ScanResult
 from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
 
