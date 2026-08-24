@@ -57,6 +57,7 @@ class ScanResult:
     tools: list[ToolRecord] = field(default_factory=list)
     capabilities: list[Capability] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
+    capability_graph: dict[str, Any] | None = None
 
     @property
     def risk_score(self) -> int:
@@ -90,5 +91,6 @@ class ScanResult:
                 for x in self.tools
             ],
             "capabilities": [asdict(x) for x in self.capabilities],
+            "capability_graph": self.capability_graph,
             "findings": [asdict(x) for x in self.findings],
         }
