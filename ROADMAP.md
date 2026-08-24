@@ -92,16 +92,16 @@ Goal: establish the main interoperability moat instead of growing framework-spec
 - schema evolution rules preserve backward readability
 - adding a framework cannot silently weaken an existing policy decision
 
-## v0.4 — Capability graph and compositional risk
+## v0.4 — Capability graph and compositional risk ✅
 
 Goal: detect security-relevant **paths between capabilities**, not just isolated flags.
 
-- [ ] Versioned capability graph model — #12
-- [ ] Possible data-exfiltration paths
-- [ ] Possible supply-chain mutation paths
-- [ ] Credential + egress combinations
-- [ ] Scope-aware path severity
-- [ ] Conservative PR explanations with evidence and confidence
+- [x] Versioned capability graph model — #12
+- [x] Possible data-exfiltration paths
+- [x] Possible supply-chain mutation paths
+- [x] Credential + egress combinations
+- [x] Scope-aware path severity
+- [x] Conservative PR explanations with evidence and confidence
 
 ### v0.4 safety rule
 
