@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.3.0 alpha — universal capability schema + adapter conformance complete.** Static adapter support covers MCP, OpenAI/OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata. The classifier remains intentionally explainable and conservative. Expect false positives and false negatives while schema coverage matures. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.4 — IN_PROGRESS.** v0.3.0 remains the last completed milestone. v0.4 is adding a versioned static capability graph and conservative compositional-risk paths. These paths are evidence-backed possibilities only; they do not establish runtime reachability or exploitability. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -85,6 +85,14 @@ The adapter conformance suite checks equivalent filesystem/network privileges ac
 
 Snapshots remain backward-readable: the v0.2 capability ID list and fingerprint stay in place while v0.3 adds `capability_schema_version` and `capability_records`. Unsupported, runtime-generated, or ambiguous framework behavior remains unknown/generic rather than being treated as safe. See [docs/capability-schema.md](docs/capability-schema.md).
 
+## Capability graph and possible paths
+
+v0.4 adds a separately versioned capability graph derived only from already-recognized static capabilities. Deterministic rules identify combinations such as `secrets.access + network.external`, `filesystem.read + email.send`, and `github.write + shell.execute` as **possible** data-egress or supply-chain paths.
+
+Severity and confidence are separate. Scope can raise path severity when evidence is broad or unresolved, while unknown scope lowers confidence rather than being treated as safe. Every path explanation states that static evidence does not prove runtime reachability or exploitability. The scanner never executes target code, probes endpoints, uses credentials, or attempts exploitation to validate a path.
+
+Snapshots carry the graph as an additive field. Older snapshots without graph data remain readable, and PR Markdown highlights newly introduced possible paths without turning them into claims of confirmed exploitation. See [docs/capability-graph.md](docs/capability-graph.md).
+
 ## Snapshots and diffs
 
 ```bash
@@ -94,7 +102,7 @@ agentcapdiff snapshot ./agent --output after.json
 agentcapdiff diff before.json after.json
 ```
 
-New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, risk score, and scope evidence do not affect the fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
+New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, risk score, scope evidence, and capability-path data do not affect the legacy fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
 
 Snapshots also retain filesystem/network scope evidence separately so semantic scope changes can be reviewed without changing capability IDs or fingerprint compatibility.
 
@@ -108,6 +116,7 @@ Machine-readable diff example:
   "tools_removed": [],
   "scope_changes": [],
   "scope_expansions": [],
+  "paths_added": [],
   "base_risk_score": 10,
   "head_risk_score": 45,
   "risk_delta": 35,
@@ -125,7 +134,7 @@ agentcapdiff diff before.json after.json --format markdown
 
 The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
 
-This makes capability expansion and statically proven scope expansion visible alongside normal test and security checks.
+This makes capability expansion, statically proven scope expansion, and newly introduced possible capability paths visible alongside normal test and security checks.
 
 ## GitHub Action
 
