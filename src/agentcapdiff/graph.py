@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any
 
 from .models import Capability
 
@@ -195,3 +196,8 @@ def build_capability_graph(capabilities: list[Capability]) -> CapabilityGraph:
         edges=tuple(edge_map[key] for key in sorted(edge_map)),
         paths=tuple(sorted(paths, key=lambda item: item.id)),
     )
+
+
+def capability_graph_to_record(graph: CapabilityGraph) -> dict[str, Any]:
+    """Serialize the graph to a stable JSON-compatible record."""
+    return asdict(graph)
