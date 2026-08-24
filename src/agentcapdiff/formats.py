@@ -93,9 +93,12 @@ def _markdown_path(path: dict[str, Any]) -> str:
     capabilities = " + ".join(
         f"`{_markdown_escape(value)}`" for value in path.get("capabilities", [])
     )
+    tools = ", ".join(f"`{_markdown_escape(value)}`" for value in path.get("tools", []))
+    tool_evidence = f" Tools: {tools}." if tools else ""
     return (
-        f"- **{severity}** / confidence **{confidence}** — {title}: {capabilities}. "
-        "Static evidence only; runtime reachability/exploitability is not established."
+        f"- **{severity}** / confidence **{confidence}** — {title}: {capabilities}."
+        f"{tool_evidence} Static evidence only; runtime reachability/exploitability "
+        "is not established."
     )
 
 
