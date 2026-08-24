@@ -31,6 +31,18 @@ def text_report(result: ScanResult) -> str:
             for cap in sorted(scoped, key=lambda c: (c.id, c.tool)):
                 values = ", ".join(cap.scope.values) if cap.scope.values else "(not established)"
                 lines.append(f"  - {cap.id}/{cap.tool}: {cap.scope.kind} — {values}")
+
+    graph = result.capability_graph or {}
+    paths = graph.get("paths", []) if isinstance(graph, dict) else []
+    if paths:
+        lines.append("\nPossible capability paths (static evidence only):")
+        for path in paths:
+            severity = str(path.get("severity", "INFO"))
+            confidence = str(path.get("confidence", "low"))
+            title = str(path.get("title", "Possible capability path"))
+            lines.append(f"  [{severity}/{confidence}] {title}")
+        lines.append("  Runtime reachability/exploitability is not established by these paths.")
+
     if result.findings:
         lines.append("\nFindings:")
         for finding in result.findings:
@@ -72,6 +84,19 @@ def _scope_label(scope: dict[str, Any]) -> str:
     kind = _markdown_escape(scope.get("kind", "unknown"))
     values = [_markdown_escape(v) for v in scope.get("values", [])]
     return f"{kind}: {', '.join(values) if values else '(not established)'}"
+
+
+def _markdown_path(path: dict[str, Any]) -> str:
+    severity = _markdown_escape(path.get("severity", "INFO"))
+    confidence = _markdown_escape(path.get("confidence", "low"))
+    title = _markdown_escape(path.get("title", "Possible capability path"))
+    capabilities = " + ".join(
+        f"`{_markdown_escape(value)}`" for value in path.get("capabilities", [])
+    )
+    return (
+        f"- **{severity}** / confidence **{confidence}** — {title}: {capabilities}. "
+        "Static evidence only; runtime reachability/exploitability is not established."
+    )
 
 
 def markdown_diff_report(diff: dict[str, Any]) -> str:
@@ -127,6 +152,12 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
                 f"{_scope_label(item.get('after', {}))}"
             )
 
+    paths_added = list(diff.get("paths_added", []))
+    if paths_added:
+        has_change = True
+        lines.extend(["", "### New possible capability paths"])
+        lines.extend(_markdown_path(path) for path in paths_added)
+
     findings = list(diff.get("head_findings", []))
     if findings:
         lines.extend(["", "### Policy findings in PR head"])
@@ -139,8 +170,7 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "No capability or tool changes detected. "
-                "No static scope changes detected.",
+                "No capability, tool, static scope, or possible-path changes detected.",
             ]
         )
     return "\n".join(lines)
