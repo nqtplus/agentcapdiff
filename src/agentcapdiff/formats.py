@@ -173,7 +173,8 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "No capability, tool, static scope, or possible-path changes detected.",
+                "No capability or tool changes detected. "
+                "No static scope or possible-path changes detected.",
             ]
         )
     return "\n".join(lines)
