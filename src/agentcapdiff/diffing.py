@@ -151,6 +151,8 @@ def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
     scope_changes, scope_expansions = _scope_changes(a, b)
     base_paths = {str(item["id"]): item for item in _path_records(a)}
     head_paths = {str(item["id"]): item for item in _path_records(b)}
+    added_path_ids = sorted(head_paths.keys() - base_paths.keys())
+    removed_path_ids = sorted(base_paths.keys() - head_paths.keys())
     return {
         "capabilities_added": sorted(bc - ac),
         "capabilities_removed": sorted(ac - bc),
@@ -158,8 +160,8 @@ def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
         "tools_removed": sorted(at - bt),
         "scope_changes": scope_changes,
         "scope_expansions": scope_expansions,
-        "paths_added": [head_paths[path_id] for path_id in sorted(head_paths.keys() - base_paths.keys())],
-        "paths_removed": [base_paths[path_id] for path_id in sorted(base_paths.keys() - head_paths.keys())],
+        "paths_added": [head_paths[path_id] for path_id in added_path_ids],
+        "paths_removed": [base_paths[path_id] for path_id in removed_path_ids],
         "head_paths": [head_paths[path_id] for path_id in sorted(head_paths)],
         "base_risk_score": base_risk,
         "head_risk_score": head_risk,
