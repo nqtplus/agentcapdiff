@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.4 — IN_PROGRESS.** v0.3.0 remains the last completed milestone. v0.4 is adding a versioned static capability graph and conservative compositional-risk paths. These paths are evidence-backed possibilities only; they do not establish runtime reachability or exploitability. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.4.0 alpha — capability graph + conservative compositional risk complete.** v0.4 adds a versioned static capability graph and evidence-backed possible risk paths with severity and confidence kept separate. These paths do not establish runtime reachability or exploitability. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
