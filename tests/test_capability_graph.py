@@ -1,10 +1,9 @@
 from agentcapdiff.graph import (
+    CAPABILITY_GRAPH_SCHEMA_VERSION,
     build_capability_graph,
     capability_graph_to_record,
-    CAPABILITY_GRAPH_SCHEMA_VERSION,
 )
 from agentcapdiff.models import Capability, ScopeEvidence
-
 
 RISK = {
     "filesystem.read": 10,
