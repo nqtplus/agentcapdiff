@@ -68,6 +68,7 @@ def snapshot_payload(result: ScanResult) -> dict[str, Any]:
         "capability_fingerprint": capability_fingerprint(capability_ids),
         "tools": sorted({t.name for t in result.tools}),
         "scopes": scope_records(result.capabilities),
+        "capability_graph": result.capability_graph,
         "findings": _snapshot_findings(result),
     }
 
@@ -128,6 +129,16 @@ def _scope_changes(
     return changes, expansions
 
 
+def _path_records(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    graph = snapshot.get("capability_graph")
+    if not isinstance(graph, dict):
+        return []
+    paths = graph.get("paths", [])
+    if not isinstance(paths, list):
+        return []
+    return [item for item in paths if isinstance(item, dict) and item.get("id")]
+
+
 def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
     a = json.loads(base.read_text(encoding="utf-8"))
     b = json.loads(head.read_text(encoding="utf-8"))
@@ -138,6 +149,8 @@ def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
     base_fingerprint = _snapshot_fingerprint(a)
     head_fingerprint = _snapshot_fingerprint(b)
     scope_changes, scope_expansions = _scope_changes(a, b)
+    base_paths = {str(item["id"]): item for item in _path_records(a)}
+    head_paths = {str(item["id"]): item for item in _path_records(b)}
     return {
         "capabilities_added": sorted(bc - ac),
         "capabilities_removed": sorted(ac - bc),
@@ -145,6 +158,9 @@ def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
         "tools_removed": sorted(at - bt),
         "scope_changes": scope_changes,
         "scope_expansions": scope_expansions,
+        "paths_added": [head_paths[path_id] for path_id in sorted(head_paths.keys() - base_paths.keys())],
+        "paths_removed": [base_paths[path_id] for path_id in sorted(base_paths.keys() - head_paths.keys())],
+        "head_paths": [head_paths[path_id] for path_id in sorted(head_paths)],
         "base_risk_score": base_risk,
         "head_risk_score": head_risk,
         "risk_delta": head_risk - base_risk,
