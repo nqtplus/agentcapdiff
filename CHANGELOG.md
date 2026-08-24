@@ -2,6 +2,22 @@
 
 All notable changes will be documented here.
 
+## [0.4.0] - 2026-08-24
+
+### Added
+- Separately versioned deterministic capability graph derived from normalized static capabilities
+- Conservative possible data-egress, credential-egress, and source-control/supply-chain mutation path rules
+- Scope-aware path severity with confidence kept as an independent signal
+- Additive capability-graph snapshot records with backward compatibility for older snapshots
+- Snapshot diffing and PR Markdown for newly introduced possible capability paths
+- Positive, negative, ambiguous-scope, deterministic, backward-compatibility, and Markdown regression tests
+- Public capability-graph schema and interpretation documentation
+
+### Security
+- Capability paths are explicitly evidence-backed possibilities, not claims of runtime reachability or exploitability
+- Unknown scope never becomes a reassuring restriction; it lowers confidence and cannot reduce scope-sensitive severity
+- Graph analysis remains static: no target-code execution/import, endpoint probing, credential use/collection, or dynamic exploitation
+
 ## [0.3.0] - 2026-08-23
 
 ### Added
