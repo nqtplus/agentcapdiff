@@ -55,7 +55,9 @@ def text_report(result: ScanResult) -> str:
             selector = "/".join(
                 str(item.get(key) or "*") for key in ("rule_id", "capability", "tool")
             )
-            lines.append(f"  - {selector} until {item.get('expires', '')}: {item.get('reason', '')}")
+            expiry = item.get("expires", "")
+            reason = item.get("reason", "")
+            lines.append(f"  - {selector} until {expiry}: {reason}")
 
     graph = result.capability_graph or {}
     paths = graph.get("paths", []) if isinstance(graph, dict) else []
