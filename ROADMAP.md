@@ -107,17 +107,17 @@ Goal: detect security-relevant **paths between capabilities**, not just isolated
 
 AgentCapDiff must report these as **possible/evidence-backed paths**, not claim runtime exploitability unless that conclusion is actually supported. No dynamic exploitation, probing, credential use, or target execution is allowed.
 
-## v0.5 — Policy maturity and safe review UX
+## v0.5 — Policy maturity and safe review UX ✅
 
 Goal: let teams express least privilege without creating dangerous false confidence or easy bypasses.
 
 - [x] Capability allowlists by tool — #22
 - [x] Scope constraints — #22
-- [ ] Trust-boundary annotations — #22
-- [ ] Policy inheritance with deterministic precedence — #22
-- [ ] Suppressions that require reason + expiry — #22
+- [x] Trust-boundary annotations — #22
+- [x] Policy inheritance with deterministic precedence — #22
+- [x] Suppressions that require reason + expiry — #22
 - [x] Explicit `unknown` handling policy — #22
-- [ ] Policy-weakening diff warnings — #22
+- [x] Policy-weakening diff warnings — #22
 - [x] Safe defaults for CI failure thresholds — #22
 
 ### v0.5 release gate

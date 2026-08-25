@@ -60,8 +60,8 @@ def _write_or_print(report: str, output: str | None) -> None:
 def _scan_or_report_error(path: Path, policy: Path | None):
     try:
         return scan(path, policy)
-    except (DiscoveryLimitError, FileNotFoundError) as exc:
-        print(f"agentcapdiff: unsafe or invalid scan input: {exc}", file=sys.stderr)
+    except (DiscoveryLimitError, FileNotFoundError, ValueError) as exc:
+        print(f"agentcapdiff: unsafe or invalid scan input/policy: {exc}", file=sys.stderr)
         return None
 
 

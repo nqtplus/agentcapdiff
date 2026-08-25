@@ -2,6 +2,30 @@
 
 All notable changes will be documented here.
 
+## [0.5.0] - 2026-08-25
+
+### Added
+- Per-tool capability allowlists and static filesystem/network scope constraints
+- Explicit `unknown_scope` handling with conservative `review` default
+- Trust-boundary annotations carried into effective policy records and review output
+- Deterministic local policy inheritance with ordered parents and child precedence
+- Temporary policy suppressions requiring a non-empty reason and ISO expiry date
+- Effective policy snapshots, policy fingerprints, and PR policy-weakening warnings
+- Review warnings for removed denies/review requirements, raised risk thresholds, relaxed unknown handling, expanded tool/scope allowlists, new or extended suppressions, and removed trust-boundary annotations
+- Backwards-readability tests for legacy policies and snapshots without policy metadata
+
+### Changed
+- CLI and composite GitHub Action default to `fail-on: medium`
+- Invalid, escaping, cyclic, over-deep, malformed-suppression, or expired-suppression policy input fails closed
+- PR Markdown now surfaces policy changes independently from capability changes
+
+### Security
+- Inherited policy files are restricted to the root policy directory and symlinked policy files are rejected
+- Expired suppressions cannot silently remain active; malformed or expired suppression configuration invalidates the policy
+- Trust-boundary annotations are review context only and are not represented as proof of runtime isolation
+- Unknown scope remains uncertainty rather than evidence of safety
+- Policy evaluation remains static and deterministic with no target-code execution/import, endpoint probing, credential use, or runtime enforcement claims
+
 ## [0.4.0] - 2026-08-24
 
 ### Added
