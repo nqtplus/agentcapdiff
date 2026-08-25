@@ -15,7 +15,7 @@ inputs:
   fail-on:
     description: Failure threshold (never, medium, high)
     required: false
-    default: high
+    default: medium
 runs:
   using: composite
   steps:
