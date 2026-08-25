@@ -52,3 +52,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["E501"]
+"src/agentcapdiff/diffing.py" = ["E501"]
+"src/agentcapdiff/formats.py" = ["E501"]
+"src/agentcapdiff/policy.py" = ["E501", "UP017"]
