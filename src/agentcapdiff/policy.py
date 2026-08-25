@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -123,7 +123,8 @@ def _load_trust_boundaries(raw: Any) -> dict[str, TrustBoundary]:
             raise ValueError(f"Trust boundary for {tool} requires a non-empty boundary")
         if trust not in _TRUST_LEVELS:
             raise ValueError(
-                f"Trust boundary for {tool} has invalid trust; expected trusted, untrusted, or unknown"
+                f"Trust boundary for {tool} has invalid trust; "
+                "expected trusted, untrusted, or unknown"
             )
         if not isinstance(note, str):
             raise ValueError(f"Trust boundary note for {tool} must be a string")
@@ -148,12 +149,17 @@ def _load_suppressions(raw: Any, today: date) -> tuple[Suppression, ...]:
             raise ValueError(f"Policy field {field_name}.rule_id is required")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError(f"Policy field {field_name}.reason is required")
-        if not isinstance(expires_raw, str):
+        if isinstance(expires_raw, date) and not isinstance(expires_raw, datetime):
+            expires = expires_raw
+        elif isinstance(expires_raw, str):
+            try:
+                expires = date.fromisoformat(expires_raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Policy field {field_name}.expires must be YYYY-MM-DD"
+                ) from exc
+        else:
             raise ValueError(f"Policy field {field_name}.expires must be an ISO date")
-        try:
-            expires = date.fromisoformat(expires_raw)
-        except ValueError as exc:
-            raise ValueError(f"Policy field {field_name}.expires must be YYYY-MM-DD") from exc
         if expires < today:
             raise ValueError(
                 f"Policy suppression {rule_id.strip()} expired on {expires.isoformat()}"
@@ -253,7 +259,7 @@ def _load_raw_policy(
 def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
     if path is None or not path.exists():
         return Policy()
-    current_day = today or datetime.now(timezone.utc).date()
+    current_day = today or datetime.now(UTC).date()
     root = path.resolve().parent
     raw, sources = _load_raw_policy(path, root, ())
     unknown_scope = raw.get("unknown_scope", "review")
