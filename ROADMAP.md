@@ -111,14 +111,14 @@ AgentCapDiff must report these as **possible/evidence-backed paths**, not claim 
 
 Goal: let teams express least privilege without creating dangerous false confidence or easy bypasses.
 
-- [ ] Capability allowlists by tool
-- [ ] Scope constraints
-- [ ] Trust-boundary annotations
-- [ ] Policy inheritance with deterministic precedence
-- [ ] Suppressions that require reason + expiry
-- [ ] Explicit `unknown` handling policy
-- [ ] Policy-weakening diff warnings
-- [ ] Safe defaults for CI failure thresholds
+- [x] Capability allowlists by tool — #22
+- [x] Scope constraints — #22
+- [ ] Trust-boundary annotations — #22
+- [ ] Policy inheritance with deterministic precedence — #22
+- [ ] Suppressions that require reason + expiry — #22
+- [x] Explicit `unknown` handling policy — #22
+- [ ] Policy-weakening diff warnings — #22
+- [x] Safe defaults for CI failure thresholds — #22
 
 ### v0.5 release gate
 
