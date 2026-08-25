@@ -268,10 +268,11 @@ def _suppression_weakening(base: dict[str, Any], head: dict[str, Any]) -> list[d
         selector = "/".join(part or "*" for part in key)
         before = base_by_key.get(key)
         if before is None:
+            expiry = item.get("expires", "")
             warnings.append(
                 _warning(
                     "suppression_added",
-                    f"Temporary policy suppression added for {selector} until {item.get('expires', '')}.",
+                    f"Temporary policy suppression added for {selector} until {expiry}.",
                 )
             )
             continue
