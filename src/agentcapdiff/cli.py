@@ -23,7 +23,7 @@ def _parser() -> argparse.ArgumentParser:
     scan_p.add_argument("--policy", default="agentcapdiff.yaml")
     scan_p.add_argument("--format", choices=["text", "json", "sarif"], default="text")
     scan_p.add_argument("--output")
-    scan_p.add_argument("--fail-on", choices=["never", "medium", "high"], default="high")
+    scan_p.add_argument("--fail-on", choices=["never", "medium", "high"], default="medium")
 
     snap_p = sub.add_parser(
         "snapshot",
