@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.5 — IN_PROGRESS.** The current development build is `0.5.0.dev0`. v0.5 is adding policy maturity and safer review UX. The first slice adds per-tool capability allowlists, static scope constraints, explicit unknown-scope handling, and a conservative default CI failure threshold. Trust-boundary annotations, inherited-policy precedence, expiring suppressions, and policy-weakening diff warnings are still incomplete. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.5.0 alpha — complete.** v0.5 completes policy maturity and safer review UX with per-tool allowlists, scope constraints, trust-boundary annotations, deterministic local policy inheritance, reason-and-expiry suppressions, explicit unknown-scope handling, policy-weakening PR warnings, and conservative CI defaults. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -71,9 +71,12 @@ require_review:
   - github.write
 ```
 
-The v0.5 development policy foundation additionally supports per-tool capability allowlists, static scope constraints, and explicit handling for unknown constrained scope:
+v0.5 adds per-tool capability allowlists, static scope constraints, explicit unknown handling, trust-boundary review annotations, deterministic local inheritance, and temporary suppressions:
 
 ```yaml
+extends:
+  - policies/base.yml
+
 allow_by_tool:
   report_reader:
     - filesystem.read
@@ -91,9 +94,24 @@ scope_constraints:
       - api.example.com
 
 unknown_scope: review  # deny | review | ignore
+
+trust_boundaries:
+  api_client:
+    boundary: internet
+    trust: untrusted
+    note: third-party service
+
+suppressions:
+  - rule_id: capability.review_required
+    capability: filesystem.write
+    tool: report_writer
+    reason: reviewed migration window
+    expires: 2026-09-01  # example only; use a short real expiry
 ```
 
-`unknown_scope: review` is the default. Unknown scope is not treated as safe. The CLI and composite Action currently default to `--fail-on medium`, so review-required and unknown-scope findings fail unattended CI unless a repository explicitly chooses another threshold. See [docs/policy-v0.5.md](docs/policy-v0.5.md).
+Inheritance is deterministic: parents are applied in listed order, later parents override earlier parents, and the child policy overrides inherited values. Mapping fields merge by key. Inherited files must remain inside the root policy directory; cycles, excessive depth, escaping paths, malformed suppressions, and expired suppressions fail closed.
+
+`unknown_scope: review` is the default. Unknown scope is not treated as safe. Suppressions require both a non-empty reason and an ISO expiry date, remain visible as informational evidence while active, and become invalid after expiry. The CLI and composite Action default to `--fail-on medium`, so review-required and unknown-scope findings fail unattended CI unless a repository explicitly chooses another threshold. See [docs/policy-v0.5.md](docs/policy-v0.5.md).
 
 ## Static filesystem and network scopes
 
@@ -130,7 +148,7 @@ agentcapdiff diff before.json after.json
 
 New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, risk score, scope evidence, and capability-path data do not affect the legacy fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
 
-Snapshots also retain filesystem/network scope evidence separately so semantic scope changes can be reviewed without changing capability IDs or fingerprint compatibility.
+Snapshots also retain filesystem/network scope evidence and the normalized effective policy. v0.5 computes a separate policy fingerprint for diffing; it does not change the legacy capability fingerprint. Older snapshots without policy metadata remain readable and do not generate fabricated weakening warnings.
 
 Machine-readable diff example:
 
@@ -143,6 +161,8 @@ Machine-readable diff example:
   "scope_changes": [],
   "scope_expansions": [],
   "paths_added": [],
+  "policy_changed": true,
+  "policy_weakening_warnings": [],
   "base_risk_score": 10,
   "head_risk_score": 45,
   "risk_delta": 35,
@@ -160,7 +180,7 @@ agentcapdiff diff before.json after.json --format markdown
 
 The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
 
-This makes capability expansion, statically proven scope expansion, and newly introduced possible capability paths visible alongside normal test and security checks.
+This makes capability expansion, statically proven scope expansion, newly introduced possible capability paths, trust-boundary context, active temporary suppressions, and policy weakening visible alongside normal test and security checks. Weakening warnings include removed denies/review requirements, raised risk thresholds, relaxed unknown handling, expanded allowlists/scope constraints, new or extended suppressions, and removed trust-boundary annotations.
 
 ## GitHub Action
 
