@@ -55,7 +55,10 @@ def _load_scope_constraints(raw: Any) -> dict[str, ScopeConstraint]:
     for capability, config in raw.items():
         if not isinstance(capability, str) or not isinstance(config, dict):
             raise ValueError("Each scope constraint must map a capability to a mapping")
-        allowed_kinds = _string_set(config.get("allowed_kinds", ["restricted"]), f"scope_constraints.{capability}.allowed_kinds")
+        allowed_kinds = _string_set(
+            config.get("allowed_kinds", ["restricted"]),
+            f"scope_constraints.{capability}.allowed_kinds",
+        )
         invalid = allowed_kinds - {"restricted", "broad", "unknown"}
         if invalid:
             raise ValueError(f"Invalid scope kind(s) for {capability}: {sorted(invalid)}")
@@ -63,9 +66,8 @@ def _load_scope_constraints(raw: Any) -> dict[str, ScopeConstraint]:
         if not isinstance(allowed_values_raw, list) or not all(
             isinstance(item, str) for item in allowed_values_raw
         ):
-            raise ValueError(
-                f"Policy field scope_constraints.{capability}.allowed_values must be a list of strings"
-            )
+            field_name = f"scope_constraints.{capability}.allowed_values"
+            raise ValueError(f"Policy field {field_name} must be a list of strings")
         result[capability] = ScopeConstraint(
             allowed_kinds=frozenset(allowed_kinds),
             allowed_values=tuple(sorted(set(allowed_values_raw))),
