@@ -61,7 +61,7 @@ def _scan_or_report_error(path: Path, policy: Path | None):
     try:
         return scan(path, policy)
     except (DiscoveryLimitError, FileNotFoundError, ValueError) as exc:
-        print(f"agentcapdiff: unsafe or invalid scan/policy input: {exc}", file=sys.stderr)
+        print(f"agentcapdiff: unsafe or invalid scan input/policy: {exc}", file=sys.stderr)
         return None
 
 
