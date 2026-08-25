@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.4.0 alpha — capability graph + conservative compositional risk complete.** v0.4 adds a versioned static capability graph and evidence-backed possible risk paths with severity and confidence kept separate. These paths do not establish runtime reachability or exploitability. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.5 — IN_PROGRESS.** The current development build is `0.5.0.dev0`. v0.5 is adding policy maturity and safer review UX. The first slice adds per-tool capability allowlists, static scope constraints, explicit unknown-scope handling, and a conservative default CI failure threshold. Trust-boundary annotations, inherited-policy precedence, expiring suppressions, and policy-weakening diff warnings are still incomplete. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -56,6 +56,8 @@ Capability inventory:
 
 ## Capability policy
 
+Legacy policy fields remain supported:
+
 ```yaml
 max_risk_score: 60
 
@@ -68,6 +70,30 @@ require_review:
   - email.send
   - github.write
 ```
+
+The v0.5 development policy foundation additionally supports per-tool capability allowlists, static scope constraints, and explicit handling for unknown constrained scope:
+
+```yaml
+allow_by_tool:
+  report_reader:
+    - filesystem.read
+  api_client:
+    - network.external
+
+scope_constraints:
+  filesystem.write:
+    allowed_kinds: [restricted]
+    allowed_values:
+      - ./reports/**
+  network.external:
+    allowed_kinds: [restricted]
+    allowed_values:
+      - api.example.com
+
+unknown_scope: review  # deny | review | ignore
+```
+
+`unknown_scope: review` is the default. Unknown scope is not treated as safe. The CLI and composite Action currently default to `--fail-on medium`, so review-required and unknown-scope findings fail unattended CI unless a repository explicitly chooses another threshold. See [docs/policy-v0.5.md](docs/policy-v0.5.md).
 
 ## Static filesystem and network scopes
 
@@ -145,7 +171,7 @@ Until a stable major-version tag is published, pin the action to a reviewed immu
   with:
     path: .
     policy: agentcapdiff.yaml
-    fail-on: high
+    fail-on: medium
 ```
 
 The repository also contains SARIF upload, CodeQL, PR capability-diff, and project-state consistency workflows.
