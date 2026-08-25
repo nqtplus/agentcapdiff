@@ -32,6 +32,31 @@ def text_report(result: ScanResult) -> str:
                 values = ", ".join(cap.scope.values) if cap.scope.values else "(not established)"
                 lines.append(f"  - {cap.id}/{cap.tool}: {cap.scope.kind} — {values}")
 
+    policy = result.policy or {}
+    sources = policy.get("sources", []) if isinstance(policy, dict) else []
+    if len(sources) > 1:
+        lines.append("\nEffective policy inheritance:")
+        lines.extend(f"  - {source}" for source in sources)
+    boundaries = policy.get("trust_boundaries", {}) if isinstance(policy, dict) else {}
+    if isinstance(boundaries, dict) and boundaries:
+        lines.append("\nTrust-boundary annotations (review context only):")
+        for tool, annotation in sorted(boundaries.items()):
+            if not isinstance(annotation, dict):
+                continue
+            boundary = annotation.get("boundary", "unknown")
+            trust = annotation.get("trust", "unknown")
+            lines.append(f"  - {tool}: {boundary} / trust={trust}")
+    suppressions = policy.get("suppressions", []) if isinstance(policy, dict) else []
+    if isinstance(suppressions, list) and suppressions:
+        lines.append("\nActive policy suppressions:")
+        for item in suppressions:
+            if not isinstance(item, dict):
+                continue
+            selector = "/".join(
+                str(item.get(key) or "*") for key in ("rule_id", "capability", "tool")
+            )
+            lines.append(f"  - {selector} until {item.get('expires', '')}: {item.get('reason', '')}")
+
     graph = result.capability_graph or {}
     paths = graph.get("paths", []) if isinstance(graph, dict) else []
     if paths:
@@ -121,13 +146,22 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
             f"`{base_fingerprint[:12]}` → `{head_fingerprint[:12]}`"
         )
 
+    policy_changed = bool(diff.get("policy_changed", False))
+    base_policy_fingerprint = str(diff.get("base_policy_fingerprint", ""))
+    head_policy_fingerprint = str(diff.get("head_policy_fingerprint", ""))
+    if base_policy_fingerprint and head_policy_fingerprint:
+        lines.append(
+            "**Policy fingerprint:** "
+            f"`{base_policy_fingerprint[:12]}` → `{head_policy_fingerprint[:12]}`"
+        )
+
     sections = (
         ("Capabilities added", diff.get("capabilities_added", [])),
         ("Capabilities removed", diff.get("capabilities_removed", [])),
         ("Tools added", diff.get("tools_added", [])),
         ("Tools removed", diff.get("tools_removed", [])),
     )
-    has_change = False
+    has_change = policy_changed
     for title, values in sections:
         if not values:
             continue
@@ -161,6 +195,40 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         lines.extend(["", "### New possible capability paths"])
         lines.extend(_markdown_path(path) for path in paths_added)
 
+    policy_warnings = list(diff.get("policy_weakening_warnings", []))
+    if policy_warnings:
+        has_change = True
+        lines.extend(["", "### ⚠️ Policy weakening warnings"])
+        for warning in policy_warnings:
+            message = _markdown_escape(warning.get("message", "Policy became less restrictive."))
+            lines.append(f"- **REVIEW REQUIRED** — {message}")
+
+    head_policy = diff.get("head_policy")
+    if policy_changed and isinstance(head_policy, dict):
+        boundaries = head_policy.get("trust_boundaries", {})
+        if isinstance(boundaries, dict) and boundaries:
+            lines.extend(["", "### Effective trust-boundary annotations"])
+            for tool, annotation in sorted(boundaries.items()):
+                if not isinstance(annotation, dict):
+                    continue
+                boundary = _markdown_escape(annotation.get("boundary", "unknown"))
+                trust = _markdown_escape(annotation.get("trust", "unknown"))
+                lines.append(f"- `{_markdown_escape(tool)}`: {boundary} / trust **{trust}**")
+        suppressions = head_policy.get("suppressions", [])
+        if isinstance(suppressions, list) and suppressions:
+            lines.extend(["", "### Active temporary suppressions"])
+            for item in suppressions:
+                if not isinstance(item, dict):
+                    continue
+                rule_id = _markdown_escape(item.get("rule_id", ""))
+                capability = _markdown_escape(item.get("capability") or "*")
+                tool = _markdown_escape(item.get("tool") or "*")
+                expires = _markdown_escape(item.get("expires", ""))
+                reason = _markdown_escape(item.get("reason", ""))
+                lines.append(
+                    f"- `{rule_id}` / `{capability}` / `{tool}` until **{expires}** — {reason}"
+                )
+
     findings = list(diff.get("head_findings", []))
     if findings:
         lines.extend(["", "### Policy findings in PR head"])
@@ -173,7 +241,7 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         lines.extend(
             [
                 "",
-                "No capability or tool changes detected. "
+                "No capability, tool, or effective-policy changes detected. "
                 "No static scope or possible-path changes detected.",
             ]
         )
