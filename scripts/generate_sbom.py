@@ -134,10 +134,11 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve()
-    if args.dist_dir.is_absolute():
-        dist_dir = args.dist_dir
-    else:
-        dist_dir = (root / args.dist_dir).resolve()
+    dist_dir = (
+        args.dist_dir
+        if args.dist_dir.is_absolute()
+        else (root / args.dist_dir).resolve()
+    )
     payload = build_sbom(root, dist_dir)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
