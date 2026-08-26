@@ -2,6 +2,29 @@
 
 All notable changes will be documented here.
 
+## [0.9.0] - 2026-08-26
+
+### Added
+- Reproducible static safety benchmark with explicit high-risk false-negative, parser-failure, false-positive, and unknown reporting
+- Release-integrity checker that rejects floating GitHub Action refs, unsafe workflow triggers/permissions, unpinned direct CI/build dependencies, and incomplete release controls
+- SPDX 2.3 SBOM generation for built release artifacts and declared runtime dependencies
+- Tag-triggered release workflow with SHA-256 checksums, build provenance attestation, SBOM attestation, release-tag/version validation, and immutable-release verification
+- Weekly Dependabot review flow for Python dependencies and GitHub Actions
+- Security-focused review of parser, path, output, PR-CI, and release trust boundaries
+- Regression coverage for symlinked directory scan roots and release/SBOM integrity
+
+### Changed
+- Package/runtime version finalized at `0.9.0`
+- Build backend, runtime dependency, developer test/lint tools, and CI/release direct dependencies use reviewed exact pins for the v0.9 release line
+- All third-party GitHub Actions in repository workflows are pinned to full commit SHAs
+- Production guidance prefers reviewed full commit SHAs or verified immutable release tags instead of floating branches
+
+### Security
+- Release workflow starts from `permissions: {}` and grants only job-local permissions required for validation, CodeQL, attestations, and publication
+- A production release is accepted only if GitHub reports `isImmutable=true`; otherwise the workflow fails closed and attempts to remove the mutable release/tag
+- Scanner discovery now explicitly rejects a symlinked directory supplied as the scan root and verifies resolved candidate paths remain inside the root boundary
+- Compromise/revocation guidance requires a new fixed version rather than silently replacing artifacts or moving an affected release tag
+
 ## [0.5.0] - 2026-08-25
 
 ### Added
@@ -78,15 +101,3 @@ All notable changes will be documented here.
 - Bounded untrusted JSON/YAML input by file bytes, total bytes, document count, nesting depth, and structured nodes
 - Cycle-aware traversal, symlink rejection, fail-closed CLI behavior for unsafe inputs
 - Conservative traversal/dynamic scope handling: ambiguous scope remains unknown
-- Escaping for untrusted values rendered into Markdown summaries, including scope evidence
-- Regression coverage verifies static scans do not execute target instructions or contact discovered endpoints
-
-## [0.1.0] - 2026-08-21
-
-### Added
-- Explainable capability inference for common agent powers
-- OpenAI-style and MCP-like tool discovery
-- YAML policy with deny/review/score controls
-- Text, JSON, and SARIF reports
-- Capability snapshots and diffs
-- Composite GitHub Action and CI workflows
