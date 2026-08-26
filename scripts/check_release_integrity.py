@@ -123,6 +123,8 @@ def _check_release_workflow(root: Path) -> None:
     release = _read(root / ".github" / "workflows" / "release.yml")
     required_fragments = (
         "permissions: {}",
+        'python-version: ["3.11", "3.12", "3.13"]',
+        "merge-base --is-ancestor",
         "attestations: write",
         "id-token: write",
         "contents: write",
@@ -152,7 +154,9 @@ def check(root: Path, release_tag: str | None = None) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Verify AgentCapDiff release-integrity invariants.")
+    parser = argparse.ArgumentParser(
+        description="Verify AgentCapDiff release-integrity invariants."
+    )
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--release-tag")
     args = parser.parse_args(argv)
