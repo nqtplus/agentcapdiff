@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "max_high_risk_false_negatives": 0,
+  "max_parser_failures": 0,
+  "note": "A release must not worsen the dangerous-miss or parser-failure baseline. False positives and unknown scope are reported, not hidden."
+}
