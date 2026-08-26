@@ -18,7 +18,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install -e ".[dev]"
-      - run: ruff check . --fix --diff
+      - run: ruff check .
       - run: pytest --cov=agentcapdiff --cov-report=term-missing
       - name: Safety benchmark regression gate
         run: python -m agentcapdiff.benchmark --output benchmark-summary.json
