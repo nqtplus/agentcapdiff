@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [project]
 name = "agentcapdiff"
-version = "0.9.0.dev0"
+version = "0.9.0"
 description = "Policy-as-code and capability diffing for AI agents and tool-enabled applications."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,10 +23,10 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
   "Topic :: Security",
 ]
-dependencies = ["PyYAML>=6.0.2"]
+dependencies = ["PyYAML==6.0.3"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "pytest-cov>=6.0", "ruff>=0.9"]
+dev = ["pytest==9.1.1", "pytest-cov==7.1.0", "ruff==0.16.4"]
 
 [project.scripts]
 agentcapdiff = "agentcapdiff.cli:main"
