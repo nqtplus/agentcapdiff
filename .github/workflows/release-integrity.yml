@@ -1,0 +1,46 @@
+name: Release integrity
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -r requirements/ci-direct.txt
+      - name: Verify workflow/dependency/release invariants
+        run: python scripts/check_release_integrity.py
+      - name: Build release artifacts without floating build dependencies
+        run: python -m build --no-isolation
+      - name: Generate and validate SPDX SBOM
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          python scripts/generate_sbom.py \
+            --dist-dir dist \
+            --output "$RUNNER_TEMP/agentcapdiff.spdx.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["RUNNER_TEMP"]) / "agentcapdiff.spdx.json"
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          assert payload["spdxVersion"] == "SPDX-2.3"
+          assert payload["files"], "SBOM must contain built artifacts"
+          assert payload["packages"], "SBOM must contain package records"
+          print("SPDX SBOM smoke check passed")
+          PY
