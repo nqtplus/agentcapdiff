@@ -1,0 +1,8 @@
+# Reviewed direct dependencies for CI/release reproducibility.
+# Transitive resolution is still performed by pip; Dependabot reviews direct updates.
+PyYAML==6.0.3
+build==1.5.0
+hatchling==1.32.0
+pytest==9.1.1
+pytest-cov==7.1.0
+ruff==0.16.4
