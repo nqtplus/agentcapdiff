@@ -21,10 +21,7 @@ def _sha256(path: Path) -> str:
 
 def _created_time() -> str:
     epoch = os.environ.get("SOURCE_DATE_EPOCH")
-    if epoch:
-        value = datetime.fromtimestamp(int(epoch), UTC)
-    else:
-        value = datetime.now(UTC)
+    value = datetime.fromtimestamp(int(epoch), UTC) if epoch else datetime.now(UTC)
     return value.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
@@ -137,7 +134,10 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve()
-    dist_dir = (root / args.dist_dir).resolve() if not args.dist_dir.is_absolute() else args.dist_dir
+    if args.dist_dir.is_absolute():
+        dist_dir = args.dist_dir
+    else:
+        dist_dir = (root / args.dist_dir).resolve()
     payload = build_sbom(root, dist_dir)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
