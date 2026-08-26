@@ -131,9 +131,9 @@ Goal: let teams express least privilege without creating dangerous false confide
 
 Goal: prove that releases are becoming safer and reduce the chance that AgentCapDiff itself becomes a supply-chain risk.
 
-- [ ] Reproducible safety benchmark — #13
-- [ ] High-risk false-negative regression gate — #13
-- [ ] False-positive and unknown-rate reporting — #13
+- [x] Reproducible safety benchmark — #13
+- [x] High-risk false-negative regression gate — #13
+- [x] False-positive and unknown-rate reporting — #13
 - [ ] SBOM and release provenance — #14
 - [ ] Least-privilege release workflow — #14
 - [ ] Immutable tagged releases and production pinning guidance — #14
