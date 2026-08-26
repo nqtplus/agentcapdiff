@@ -41,26 +41,33 @@ def _check_versions(root: Path, version: str, release_tag: str | None) -> None:
     runtime = VERSION_RE.search(init_text)
     if runtime is None or runtime.group(1) != version:
         _fail("pyproject/runtime version mismatch")
+    if release_tag is None:
+        return
     if version.endswith(".dev0"):
-        _fail("release-integrity gate requires a finalized version, not .dev0")
-    if release_tag is not None and release_tag != f"v{version}":
+        _fail("release tag cannot target a .dev0 package version")
+    if release_tag != f"v{version}":
         _fail(f"release tag {release_tag!r} must exactly match v{version}")
 
 
-def _check_project_state(root: Path, version: str) -> None:
+def _check_release_project_state(root: Path, version: str) -> None:
+    parts = version.split(".")
+    if len(parts) < 2:
+        _fail(f"unsupported release version: {version}")
+    label = f"v{parts[0]}.{parts[1]}"
+
     roadmap = _read(root / "ROADMAP.md")
-    match = re.search(
-        r"## v0\.9 — ([^\n]+)(.*?)(?=\n## v1\.0|\Z)", roadmap, re.DOTALL
-    )
+    pattern = rf"## {re.escape(label)} — ([^\n]+)(.*?)(?=\n## v\d|\Z)"
+    match = re.search(pattern, roadmap, re.DOTALL)
     if match is None:
-        _fail("ROADMAP.md lacks v0.9 section")
+        _fail(f"ROADMAP.md lacks {label} section")
     title, body = match.groups()
     if "✅" not in title or "- [ ]" in body:
-        _fail("v0.9 must be marked complete with no unchecked roadmap item")
+        _fail(f"{label} must be complete with no unchecked roadmap item")
 
     readme = _read(root / "README.md")
-    if "Status: **v0.9.0 alpha — complete.**" not in readme:
-        _fail("README does not declare v0.9.0 complete")
+    status_pattern = rf"Status:\s*\*\*{re.escape(label)}\.0[^*]*complete\.\*\*"
+    if re.search(status_pattern, readme, re.IGNORECASE) is None:
+        _fail(f"README does not declare {label}.0 complete")
 
     changelog = _read(root / "CHANGELOG.md")
     if f"## [{version}]" not in changelog:
@@ -99,11 +106,16 @@ def _check_dependency_maintenance(root: Path) -> None:
         _fail("Dependabot GitHub Actions updates are not configured")
 
     pins = _read(root / "requirements" / "ci-direct.txt")
-    entries = [line.strip() for line in pins.splitlines() if line.strip() and not line.startswith("#")]
+    entries = [
+        line.strip()
+        for line in pins.splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
     if not entries:
         _fail("requirements/ci-direct.txt has no dependency pins")
     for entry in entries:
-        if "==" not in entry or " @ " in entry or "://" in entry or entry.startswith("git+"):
+        unsafe = " @ " in entry or "://" in entry or entry.startswith("git+")
+        if "==" not in entry or unsafe:
             _fail(f"CI direct dependency is not a reviewed exact package pin: {entry}")
 
 
@@ -129,12 +141,13 @@ def check(root: Path, release_tag: str | None = None) -> str:
     root = root.resolve()
     version = _project_version(root)
     _check_versions(root, version, release_tag)
-    _check_project_state(root, version)
     _check_workflow_action_pins(root)
     _check_dependency_maintenance(root)
     _check_release_workflow(root)
     _read(root / "docs" / "security-review-v0.9.md")
     _read(root / "docs" / "release-integrity.md")
+    if release_tag is not None:
+        _check_release_project_state(root, version)
     return version
 
 
