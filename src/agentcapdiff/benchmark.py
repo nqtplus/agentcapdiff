@@ -9,7 +9,6 @@ from typing import Any
 from .discovery import DiscoveryLimitError
 from .scanner import scan
 
-
 HIGH_RISK_CAPABILITIES = {
     "filesystem.write",
     "github.write",
