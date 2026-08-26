@@ -127,18 +127,27 @@ Goal: let teams express least privilege without creating dangerous false confide
 - ambiguous permissions cannot pass as known-safe by default
 - backwards compatibility is tested for policy/schema changes
 
-## v0.9 — Measured safety and release integrity
+## v0.9 — Measured safety and release integrity ✅
 
 Goal: prove that releases are becoming safer and reduce the chance that AgentCapDiff itself becomes a supply-chain risk.
 
 - [x] Reproducible safety benchmark — #13
 - [x] High-risk false-negative regression gate — #13
 - [x] False-positive and unknown-rate reporting — #13
-- [ ] SBOM and release provenance — #14
-- [ ] Least-privilege release workflow — #14
-- [ ] Immutable tagged releases and production pinning guidance — #14
-- [ ] Dependency/GitHub Action integrity checks — #14
-- [ ] Security-focused review of parser, path, output, and CI trust boundaries
+- [x] SBOM and release provenance — #14
+- [x] Least-privilege release workflow — #14
+- [x] Immutable tagged releases and production pinning guidance — #14
+- [x] Dependency/GitHub Action integrity checks — #14
+- [x] Security-focused review of parser, path, output, and CI trust boundaries
+
+### v0.9 release gate
+
+- high-risk false-negative and parser-failure benchmark gates pass; false positives and unknowns remain separately visible
+- all third-party GitHub Actions are pinned to full commit SHAs and dependency/Action updates are reviewed through Dependabot PRs
+- release artifacts include SHA-256 checksums, an SPDX SBOM, build provenance, and SBOM attestations
+- release workflow starts with no permissions, grants only job-local privileges, and cannot publish before validation + CodeQL pass
+- a production release is accepted only when GitHub reports it immutable; otherwise the workflow removes the mutable release/tag and fails closed
+- parser, path, output, PR-CI, and release trust boundaries have a documented security review with permanent regression coverage for fixes
 
 ## v1.0 — Safety-gated stable release
 

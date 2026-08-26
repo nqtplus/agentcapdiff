@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.9 — IN_PROGRESS.** The current target adds measured safety and release integrity. The reproducible safety benchmark, high-risk false-negative gate, and false-positive/unknown reporting are implemented; release provenance, SBOM, immutable-release workflow, and dependency/Action integrity work remain. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.9.0 alpha — complete.** v0.9 adds reproducible safety measurement and release-integrity controls: high-risk false-negative/parser gates, explicit false-positive/unknown reporting, exact dependency and GitHub Action pins, SPDX SBOM generation, checksums, provenance/SBOM attestations, least-privilege tag releases, immutable-release enforcement, and a parser/path/output/CI trust-boundary review. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -28,7 +28,7 @@ python -m pip install "git+https://github.com/nqtplus/agentcapdiff.git"
 agentcapdiff scan ./agent --policy agentcapdiff.yaml
 ```
 
-For production CI, pin a reviewed immutable commit SHA or trusted release tag instead of relying on a floating branch reference.
+For production CI, pin a reviewed full commit SHA or a verified immutable release tag instead of relying on a floating branch reference.
 
 Or for local development:
 
@@ -194,19 +194,29 @@ python -m agentcapdiff.benchmark --output benchmark-summary.json
 
 Every fixed classification or security regression must add a permanent sanitized fixture. The benchmark remains static and does not execute target code, probe endpoints, or use credentials. See [docs/safety-benchmark.md](docs/safety-benchmark.md).
 
+## Release integrity
+
+v0.9 treats the release pipeline as a security boundary. All external Actions in repository workflows are pinned to full commit SHAs, direct CI/release dependencies are reviewed exact pins, and Dependabot opens reviewable update PRs for both Python and GitHub Actions.
+
+A tag-triggered release must match the finalized package/runtime version and pass release-integrity checks, the test suite, Ruff, the safety benchmark, AgentCapDiff self-policy, and CodeQL before publication. The publish job builds the wheel/source distribution, creates `SHA256SUMS`, generates an SPDX 2.3 SBOM, and records GitHub build-provenance and SBOM attestations.
+
+Repository release immutability must be enabled in GitHub before a production tag is published. The workflow publishes from a draft, then accepts the release only if GitHub reports `isImmutable=true`; otherwise it fails closed and attempts to remove the mutable release/tag.
+
+See [docs/release-integrity.md](docs/release-integrity.md), [RELEASE.md](RELEASE.md), and [docs/security-review-v0.9.md](docs/security-review-v0.9.md).
+
 ## GitHub Action
 
-Until a stable major-version tag is published, pin the action to a reviewed immutable commit for production use. A floating branch is suitable only for evaluation or development:
+For production use, pin the Action to a reviewed full commit SHA. A verified immutable release tag is also suitable when its release and attestations have been reviewed. Floating branches are for evaluation/development only:
 
 ```yaml
-- uses: nqtplus/agentcapdiff@<reviewed-commit-sha>
+- uses: nqtplus/agentcapdiff@<reviewed-full-commit-sha>
   with:
     path: .
     policy: agentcapdiff.yaml
     fail-on: medium
 ```
 
-The repository also contains SARIF upload, CodeQL, PR capability-diff, and project-state consistency workflows.
+The repository also contains SARIF upload, CodeQL, PR capability-diff, project-state consistency, release-integrity, and least-privilege release workflows.
 
 ## Supported static inputs
 
@@ -220,9 +230,9 @@ The repository also contains SARIF upload, CodeQL, PR capability-diff, and proje
 
 Framework support means recognition of **static serialized metadata only**. AgentCapDiff does not import Python/JavaScript SDKs, instantiate decorators/classes, traverse live object graphs, or execute target code to materialize a schema. Runtime-only or unsupported shapes therefore remain outside positive adapter attribution rather than being silently labeled safe.
 
-Discovery treats scanned files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
+Discovery treats scanned files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs/roots, checks resolved candidates stay inside the scan-root boundary, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
 
-The v0.2 hardening suite includes malformed/pathological input cases, deterministic fuzz/property tests, path traversal/symlink regression coverage, output-injection regression tests, and checks that discovered endpoints do not trigger network access.
+The hardening suite includes malformed/pathological input cases, deterministic fuzz/property tests, path traversal/symlink regression coverage, output-injection regression tests, and checks that discovered endpoints do not trigger network access.
 
 Roadmap and future capability work are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
 

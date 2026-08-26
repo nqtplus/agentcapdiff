@@ -181,7 +181,10 @@ def discover_tools(
 ) -> list[ToolRecord]:
     if not root.exists():
         raise FileNotFoundError(f"scan path does not exist: {root}")
+    if root.is_symlink() and root.is_dir():
+        raise DiscoveryLimitError(f"refusing symlinked scan root: {root}")
 
+    root_boundary = root.resolve() if root.is_dir() else root.parent.resolve()
     candidates = (root,) if root.is_file() else (p for p in root.rglob("*") if p.is_file())
     found: list[ToolRecord] = []
     total_bytes = 0
@@ -192,6 +195,11 @@ def discover_tools(
             continue
         if any(part in IGNORED_DIRS for part in path.parts):
             continue
+
+        try:
+            path.resolve().relative_to(root_boundary)
+        except ValueError as exc:
+            raise DiscoveryLimitError(f"scan input escapes root boundary: {path}") from exc
 
         documents += 1
         if documents > limits.max_documents:

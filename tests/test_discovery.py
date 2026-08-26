@@ -93,3 +93,26 @@ def test_refuses_symlinked_input(tmp_path: Path):
 
     with pytest.raises(DiscoveryLimitError, match="refusing to read symlinked input"):
         discover_tools(link)
+
+
+def test_refuses_symlinked_directory_scan_root(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "tool.json").write_text(
+        json.dumps(
+            {
+                "name": "read_file",
+                "description": "read_file",
+                "inputSchema": {"type": "object"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    link = tmp_path / "linked-root"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable on this platform")
+
+    with pytest.raises(DiscoveryLimitError, match="refusing symlinked scan root"):
+        discover_tools(link)
