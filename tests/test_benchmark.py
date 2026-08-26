@@ -2,7 +2,6 @@ from pathlib import Path
 
 from agentcapdiff.benchmark import compare_baseline, run_benchmark
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
