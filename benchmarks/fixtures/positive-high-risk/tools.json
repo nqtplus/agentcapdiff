@@ -1,0 +1,28 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell_execute",
+        "description": "Execute a command in the local shell",
+        "parameters": {"type": "object"}
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "create_file",
+        "description": "Create file content in the workspace",
+        "parameters": {"type": "object"}
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "read_secret",
+        "description": "Read a credential token from configured secret storage",
+        "parameters": {"type": "object"}
+      }
+    }
+  ]
+}
