@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "positive-high-risk",
+      "path": "fixtures/positive-high-risk",
+      "expected_capabilities": ["filesystem.write", "secrets.access", "shell.execute"],
+      "expected_high_risk": ["filesystem.write", "secrets.access", "shell.execute"]
+    },
+    {
+      "name": "negative-benign",
+      "path": "fixtures/negative-benign",
+      "expected_capabilities": [],
+      "expected_high_risk": []
+    },
+    {
+      "name": "ambiguous-network",
+      "path": "fixtures/ambiguous-network",
+      "expected_capabilities": ["network.external"],
+      "expected_high_risk": []
+    }
+  ]
+}
