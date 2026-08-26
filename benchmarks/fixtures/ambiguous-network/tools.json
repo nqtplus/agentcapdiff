@@ -1,0 +1,12 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "browser_fetch",
+        "description": "Fetch a remote resource; effective destination is decided dynamically",
+        "parameters": {"type": "object"}
+      }
+    }
+  ]
+}
