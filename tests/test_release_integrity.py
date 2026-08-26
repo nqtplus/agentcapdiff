@@ -1,11 +1,11 @@
 import json
 import os
+import pathlib
 import subprocess
 import sys
-from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def test_release_integrity_contract_passes_for_repository():
@@ -20,7 +20,9 @@ def test_release_integrity_contract_passes_for_repository():
     assert "release-integrity: PASS" in result.stdout
 
 
-def test_spdx_sbom_generation_is_reproducible_for_same_artifacts(tmp_path: Path):
+def test_spdx_sbom_generation_is_reproducible_for_same_artifacts(
+    tmp_path: pathlib.Path,
+):
     dist = tmp_path / "dist"
     dist.mkdir()
     (dist / "agentcapdiff-0.9.0-py3-none-any.whl").write_bytes(b"wheel-bytes")
