@@ -11,7 +11,7 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.5.0 alpha — complete.** v0.5 completes policy maturity and safer review UX with per-tool allowlists, scope constraints, trust-boundary annotations, deterministic local policy inheritance, reason-and-expiry suppressions, explicit unknown-scope handling, policy-weakening PR warnings, and conservative CI defaults. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v0.9 — IN_PROGRESS.** The current target adds measured safety and release integrity. The reproducible safety benchmark, high-risk false-negative gate, and false-positive/unknown reporting are implemented; release provenance, SBOM, immutable-release workflow, and dependency/Action integrity work remain. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
@@ -181,6 +181,18 @@ agentcapdiff diff before.json after.json --format markdown
 The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
 
 This makes capability expansion, statically proven scope expansion, newly introduced possible capability paths, trust-boundary context, active temporary suppressions, and policy weakening visible alongside normal test and security checks. Weakening warnings include removed denies/review requirements, raised risk thresholds, relaxed unknown handling, expanded allowlists/scope constraints, new or extended suppressions, and removed trust-boundary annotations.
+
+## Safety benchmark
+
+v0.9 includes a committed positive/negative/ambiguous fixture corpus and a machine-readable benchmark summary. CI gates high-risk false negatives and parser failures against `benchmarks/baseline.json`, while nuisance false positives and unknown scope are reported separately rather than hidden in one score.
+
+Run it locally with:
+
+```bash
+python -m agentcapdiff.benchmark --output benchmark-summary.json
+```
+
+Every fixed classification or security regression must add a permanent sanitized fixture. The benchmark remains static and does not execute target code, probe endpoints, or use credentials. See [docs/safety-benchmark.md](docs/safety-benchmark.md).
 
 ## GitHub Action
 
