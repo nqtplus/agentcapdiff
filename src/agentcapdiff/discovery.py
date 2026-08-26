@@ -181,7 +181,7 @@ def discover_tools(
 ) -> list[ToolRecord]:
     if not root.exists():
         raise FileNotFoundError(f"scan path does not exist: {root}")
-    if root.is_symlink():
+    if root.is_symlink() and root.is_dir():
         raise DiscoveryLimitError(f"refusing symlinked scan root: {root}")
 
     root_boundary = root.resolve() if root.is_dir() else root.parent.resolve()
