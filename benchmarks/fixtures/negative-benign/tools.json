@@ -1,0 +1,12 @@
+{
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "summarize_notes",
+        "description": "Summarize already provided text without external side effects",
+        "parameters": {"type": "object"}
+      }
+    }
+  ]
+}
