@@ -149,24 +149,34 @@ Goal: prove that releases are becoming safer and reduce the chance that AgentCap
 - a production release is accepted only when GitHub reports it immutable; otherwise the workflow removes the mutable release/tag and fails closed
 - parser, path, output, PR-CI, and release trust boundaries have a documented security review with permanent regression coverage for fixes
 
-## v1.0 — Safety-gated stable release
+## v1.0 — Safety-gated stable release ✅
 
-v1.0 is a stability and safety milestone, not a feature-count milestone.
+v1.0 is a stability and safety milestone, not a feature-count milestone. Detailed guarantees are in `docs/stability-v1.0.md`; concrete release evidence is mapped in `docs/v1.0-verification.md`.
 
 Required before declaring stable:
 
-- [ ] Stable capability/policy schema with documented compatibility guarantees
-- [ ] Stable SARIF and machine-readable output contracts
-- [ ] Universal schema works across multiple real agent frameworks
-- [ ] Semantic filesystem/network scope diff is production-tested
-- [ ] Capability attack paths are evidence-based and conservatively worded
-- [ ] Safety benchmark is reproducible and published
-- [ ] No silent regression in the high-risk false-negative baseline
-- [ ] Input hardening/fuzz/security regression suites are green
-- [ ] CI, CodeQL, AgentCapDiff self-policy, and release-integrity checks are green
-- [ ] No known unresolved critical/high vulnerability in AgentCapDiff itself at release time
-- [ ] Threat model, limitations, supported versions, and security reporting process are current
-- [ ] Production install/action guidance uses trusted immutable release references
+- [x] Stable capability/policy schema with documented compatibility guarantees
+- [x] Stable SARIF and machine-readable output contracts
+- [x] Universal schema works across multiple real agent framework serialized formats
+- [x] Semantic filesystem/network scope diff is production-style regression tested
+- [x] Capability attack paths are evidence-based and conservatively worded
+- [x] Safety benchmark is reproducible and published in the repository
+- [x] No silent regression in the high-risk false-negative baseline
+- [x] Input hardening/fuzz/security regression suites are green
+- [x] CI, CodeQL, AgentCapDiff self-policy, and release-integrity checks are required green before merge
+- [x] No known unresolved critical/high vulnerability in AgentCapDiff itself at release time
+- [x] Threat model, limitations, supported versions, and security reporting process are current
+- [x] Production install/action guidance uses trusted immutable release references
+
+### v1.0 release gate
+
+- capability schema version `1`, policy semantics, JSON scan output, SARIF 2.1.0 output, snapshots, and diffs have explicit 1.x compatibility guarantees and regression coverage
+- framework conformance covers MCP, OpenAI API, OpenAI Agents SDK, Claude, LangChain/LangGraph-compatible, and CrewAI-style static serialized metadata without importing or executing target code
+- filesystem/network scope regression coverage includes restricted, broad, unknown/dynamic, widening, edge, and no-false-expansion cases
+- capability-path wording remains possible/evidence-backed and never claims runtime exploitability without evidence
+- benchmark, fuzz/input-hardening, parser/path/output regressions, CI Python 3.11/3.12/3.13, CodeQL, self-policy, PR capability diff, project-state consistency, and release-integrity all pass on the final release PR head
+- the repository issue tracker has no known unresolved critical/high AgentCapDiff vulnerability at final verification; this is not a claim that undiscovered vulnerabilities do not exist
+- release metadata/docs agree on `1.0.0`, and production guidance uses reviewed full commit SHAs or verified immutable release tags
 
 ## What AgentCapDiff will not become
 

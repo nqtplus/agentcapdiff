@@ -2,6 +2,24 @@
 
 All notable changes will be documented here.
 
+## [1.0.0] - 2026-08-27
+
+### Added
+- Stable 1.x compatibility contract for normalized capability records and policy semantics
+- Stable JSON scan and SARIF 2.1.0 machine-readable output guarantees with regression tests
+- v1.0 release-verification record mapping framework conformance, semantic-scope, capability-path, benchmark, fuzz/security, and supply-chain gates to repository evidence
+- Dedicated v1.0 contract tests for capability schema versioning, JSON top-level output, SARIF rule/source structure, and explicit unknown-scope semantics
+
+### Changed
+- Package/runtime version finalized at `1.0.0` and project maturity marked Production/Stable only after the v1.0 release gate is satisfied
+- README and ROADMAP now expose the v1.0 stable compatibility and safety contract
+- 1.x compatibility guidance makes breaking security-semantic reinterpretation a major/schema decision rather than a silent change
+
+### Security
+- Static-only safety invariants remain unchanged: no target-code execution/import, discovered-endpoint probing, or credential use; UNKNOWN remains uncertainty rather than SAFE
+- Stable release verification requires Python 3.11/3.12/3.13 CI, full pytest/Ruff, benchmark and release-integrity regression gates, CodeQL, self-policy, PR capability diff, project-state consistency, and no known unresolved critical/high repository security issue
+- Production use continues to require a reviewed full commit SHA or a reviewed verified immutable release tag instead of a floating branch reference
+
 ## [0.9.0] - 2026-08-26
 
 ### Added
