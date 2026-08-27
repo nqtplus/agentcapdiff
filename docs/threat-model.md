@@ -6,10 +6,13 @@ AgentCapDiff should let reviewers inspect changes in agent capabilities **withou
 
 A clean AgentCapDiff result is evidence about the static inputs it recognized. It is **not proof that an agent, tool implementation, dependency, prompt, or runtime environment is safe**.
 
+AgentCapDiff 1.x treats the capability/policy semantics and documented machine-readable output contracts as stable security-relevant interfaces. Silent reinterpretation of those interfaces is itself a review concern; see `docs/stability-v1.0.md`.
+
 ## Assets
 
 - Reviewer understanding of what an AI agent can do
 - Integrity of project capability policy and snapshot evidence
+- Integrity of stable JSON/SARIF/snapshot/diff contracts consumed by automation
 - CI results and security findings
 - Developer workstations and CI runners executing AgentCapDiff
 - Local secrets and files that must remain outside the scan boundary
@@ -43,6 +46,7 @@ GitHub CI and release workflows are a separate supply-chain trust boundary. Exte
 7. **Output injection** — untrusted values rendered into reviewer-facing Markdown are destination-escaped; JSON/SARIF are structurally serialized and regression-tested.
 8. **False assurance** — benchmark metrics keep high-risk false negatives, parser failures, false positives, and unknowns visible rather than collapsing them into a single reassuring score.
 9. **Release/dependency compromise** — Action/dependency pins, Dependabot review, SBOM/checksums/attestations, least-privilege publication, and immutable-release verification reduce silent supply-chain drift.
+10. **Stable-contract drift** — v1.0 contract tests and project-state checks guard security-relevant capability/policy/output semantics from silent incompatible change; additive evolution must remain safely ignorable by older 1.x consumers.
 
 ## Unknown and low-confidence behavior
 
@@ -58,7 +62,7 @@ AgentCapDiff is only one review layer. Production users should still use:
 - secret isolation and short-lived credentials
 - dependency and supply-chain controls
 - environment-specific allowlists and network controls where appropriate
-- reviewed full commit SHA or verified immutable release references for AgentCapDiff itself
+- reviewed full commit SHA or reviewed verified immutable release references for AgentCapDiff itself
 
 ## Non-goals
 
@@ -71,6 +75,6 @@ AgentCapDiff is only one review layer. Production users should still use:
 
 ## Residual risk
 
-Static classification can miss capabilities hidden in implementation code, generated configuration, runtime composition, aliases, misleading descriptions, or unsupported frameworks. It can also over-classify benign tools. Release attestations establish recorded build provenance, not source-code correctness. Commit/version pinning prevents silent ref movement but cannot prevent a later-discovered compromise already present in a pinned dependency or Action.
+Static classification can miss capabilities hidden in implementation code, generated configuration, runtime composition, aliases, misleading descriptions, or unsupported frameworks. It can also over-classify benign tools. Release attestations establish recorded build provenance, not source-code correctness. Commit/version pinning prevents silent ref movement but cannot prevent a later-discovered compromise already present in a pinned dependency or Action. Compatibility regression tests cover documented contracts but cannot guarantee that every downstream consumer uses those contracts correctly.
 
-These are documented limitations to measure and review, not conditions under which AgentCapDiff may claim an agent or release is intrinsically safe. See `docs/safety-benchmark.md`, `docs/security-review-v0.9.md`, and `docs/release-integrity.md`.
+These are documented limitations to measure and review, not conditions under which AgentCapDiff may claim an agent or release is intrinsically safe. See `docs/stability-v1.0.md`, `docs/v1.0-verification.md`, `docs/safety-benchmark.md`, `docs/security-review-v0.9.md`, and `docs/release-integrity.md`.
