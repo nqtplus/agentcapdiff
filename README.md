@@ -11,13 +11,17 @@ AgentCapDiff helps reviewers answer a deceptively hard question before an agent-
 
 It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
 
-> Status: **v0.9.0 alpha — complete.** v0.9 adds reproducible safety measurement and release-integrity controls: high-risk false-negative/parser gates, explicit false-positive/unknown reporting, exact dependency and GitHub Action pins, SPDX SBOM generation, checksums, provenance/SBOM attestations, least-privilege tag releases, immutable-release enforcement, and a parser/path/output/CI trust-boundary review. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+> Status: **v1.0 — IN_PROGRESS.** The stable release is gated on explicit compatibility/output contracts plus the existing benchmark, fuzz/security, CodeQL, self-policy, release-integrity, and immutable-release safeguards. Until every v1.0 gate is verified, the package/runtime version remains `1.0.0.dev0`. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
 
 ## Why this exists
 
 AI agents increasingly combine filesystem, shell, network, GitHub, email, database, and secret-bearing tools. Traditional code review shows *which lines changed*; it does not clearly show *which operational powers changed*.
 
 AgentCapDiff treats agent capability as a reviewable artifact.
+
+## v1.0 stability target
+
+v1.0 freezes the 1.x compatibility expectations for the universal capability/policy semantics and machine-readable JSON/SARIF contracts without expanding AgentCapDiff into runtime execution. The detailed guarantees and release gates are documented in [docs/stability-v1.0.md](docs/stability-v1.0.md).
 
 ## Quick start
 
