@@ -8,6 +8,7 @@ from pathlib import Path
 from .diffing import compare_snapshots, write_snapshot
 from .discovery import DiscoveryLimitError
 from .formats import json_report, markdown_diff_report, sarif_report, text_report
+from .outputio import OutputWriteError, atomic_write_text
 from .scanner import scan
 
 
@@ -49,12 +50,21 @@ def _should_fail(severity: str, threshold: str) -> bool:
     return order.get(severity, 0) >= minimum
 
 
-def _write_or_print(report: str, output: str | None) -> None:
+def _report_output_error(exc: OutputWriteError) -> None:
+    print(f"agentcapdiff: unsafe or invalid output path: {exc}", file=sys.stderr)
+
+
+def _write_or_print(report: str, output: str | None) -> bool:
     if output:
         suffix = "\n" if not report.endswith("\n") else ""
-        Path(output).write_text(report + suffix, encoding="utf-8")
+        try:
+            atomic_write_text(Path(output), report + suffix)
+        except OutputWriteError as exc:
+            _report_output_error(exc)
+            return False
     else:
         print(report)
+    return True
 
 
 def _scan_or_report_error(path: Path, policy: Path | None):
@@ -87,7 +97,8 @@ def main(argv: list[str] | None = None) -> int:
             "json": json_report,
             "sarif": sarif_report,
         }[args.format](result)
-        _write_or_print(report, args.output)
+        if not _write_or_print(report, args.output):
+            return 3
         return 2 if _should_fail(result.max_severity, args.fail_on) else 0
 
     if args.command == "snapshot":
@@ -97,7 +108,11 @@ def main(argv: list[str] | None = None) -> int:
         result = _scan_or_report_error(Path(args.path), policy)
         if result is None:
             return 3
-        write_snapshot(result, Path(args.output))
+        try:
+            write_snapshot(result, Path(args.output))
+        except OutputWriteError as exc:
+            _report_output_error(exc)
+            return 3
         return 0
 
     if args.command == "diff":
@@ -108,7 +123,8 @@ def main(argv: list[str] | None = None) -> int:
             report = markdown_diff_report(diff)
         else:
             report = json.dumps(diff, indent=2)
-        _write_or_print(report, args.output)
+        if not _write_or_print(report, args.output):
+            return 3
         return 0
     return 1
 

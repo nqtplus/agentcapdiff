@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import UNIVERSAL_CAPABILITY_SCHEMA_VERSION, ScanResult
+from .outputio import atomic_write_text
 from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
 from .snapshotio import DEFAULT_SNAPSHOT_LIMITS, SnapshotLimits, load_snapshot
@@ -76,9 +77,9 @@ def snapshot_payload(result: ScanResult) -> dict[str, Any]:
 
 
 def write_snapshot(result: ScanResult, output: Path) -> None:
-    output.write_text(
+    atomic_write_text(
+        output,
         json.dumps(snapshot_payload(result), indent=2) + "\n",
-        encoding="utf-8",
     )
 
 
