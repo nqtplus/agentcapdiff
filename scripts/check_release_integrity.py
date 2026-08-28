@@ -178,7 +178,10 @@ def _check_dependency_workflow_contract(root: Path) -> None:
         if "cache: pip" in text:
             _fail(f"pip cache is forbidden for locked CI/release installs: {workflow.name}")
         if "requirements/ci-direct.txt" in text:
-            _fail(f"workflow must install the full dependency lock, not direct pins: {workflow.name}")
+            _fail(
+                "workflow must install the full dependency lock, not direct pins: "
+                f"{workflow.name}"
+            )
         install_count = text.count(LOCK_INSTALL)
         check_count = text.count("python -m pip check")
         if install_count != check_count:
@@ -193,7 +196,10 @@ def _check_dependency_workflow_contract(root: Path) -> None:
             )
         )
         if needs_dependencies and install_count == 0:
-            _fail(f"workflow uses Python build/runtime tooling without locked dependencies: {workflow.name}")
+            _fail(
+                "workflow uses Python build/runtime tooling without locked dependencies: "
+                f"{workflow.name}"
+            )
 
 
 def _check_dependency_maintenance(root: Path) -> None:
