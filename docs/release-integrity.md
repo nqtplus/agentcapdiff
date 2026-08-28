@@ -52,15 +52,15 @@ All external GitHub Actions under `.github/workflows/` are pinned to full 40-cha
 
 `requirements/ci-direct.txt` records the reviewed direct CI/release dependencies. `requirements/ci-lock.txt` is the actual install source and freezes the complete currently required dependency closure. Every dependency is an exact `name==version` pin and every accepted wheel byte stream is bound to an explicit SHA-256. Compiled packages list only the Ubuntu x86-64 wheels required by CPython 3.11.16, 3.12.14, and 3.13.15; source distributions and unreviewed platform wheels are not accepted.
 
-CI/release workflows install with pip isolated mode, `--require-hashes`, `--no-deps`, `--no-cache-dir`, `--only-binary=:all:`, an explicit `https://pypi.org/simple` index, and the pip version check disabled. Ambient pip configuration cannot silently redirect the index, pip cannot resolve hidden transitive packages, source distributions cannot execute as a fallback, and downloaded dependency bytes must match the reviewed hashes. `python -m pip check` then fails if the frozen closure is incomplete or incompatible.
+CI/release workflows install with pip isolated mode, `--require-hashes`, `--no-deps`, `--no-cache-dir`, `--only-binary=:all:`, an explicit `https://pypi.org/simple` index, and the pip version check disabled. Resolver/cache drift is removed from this dependency-install boundary, source distributions cannot execute as a fallback, and downloaded dependency bytes must match the reviewed hashes. `python -m pip check` then fails if the frozen closure is incomplete or incompatible.
 
-`requirements/ci-environment.json` records the reviewed GitHub-hosted execution environment. Workflows use `ubuntu-24.04` rather than the moving `ubuntu-latest` alias, setup-python requests exact patch versions, and every job runs `scripts/check_ci_environment.py` before build/test/security work. The probe checks GitHub-hosted runner identity, Linux/x64, Ubuntu 24.04, the reviewed `ImageOS`/`ImageVersion`, and the expected Python version. Jobs that intentionally use the runner's ambient Python also verify the reviewed ambient pip version.
+`requirements/ci-environment.json` records the reviewed GitHub-hosted execution environment. Workflows use `ubuntu-24.04` rather than the moving `ubuntu-latest` alias, setup-python requests exact patch versions, and every job runs `scripts/check_ci_environment.py` before build/test/security work. The probe checks GitHub-hosted runner identity, Linux/x64, Ubuntu 24.04, the reviewed `ImageOS`/`ImageVersion`, and the expected Python and pip versions.
 
 The current runner image review point is Ubuntu 24.04 image `20260823.283.1`. GitHub does not provide a `runs-on` syntax that selects an immutable image digest or exact image build. The provenance check therefore acts as a post-scheduling allowlist: if GitHub advances the hosted image, the job fails closed until that new image is reviewed and `ci-environment.json` is updated. This is stronger than accepting `ubuntu-latest`, but it is not equivalent to a cryptographically pinned VM image.
 
-The setup-python action itself is commit-SHA pinned and exact Python patch versions are selected. The pip executable bundled in the selected Python toolcache remains a bootstrap trust input until its observed version is also reviewed. Package SHA-256 verification protects dependency artifact bytes only to the extent that this local pip bootstrap correctly performs hash verification. The external PyPI service remains an availability/metadata dependency, although a substituted package artifact cannot pass `--require-hashes` without a reviewed digest.
+The setup-python Action itself is commit-SHA pinned, exact Python patches `3.11.16`, `3.12.14`, and `3.13.15` are selected, and the observed toolcache pip bootstrap is explicitly allowlisted at `26.2.1`. Jobs that intentionally use the runner's ambient Python separately verify Python `3.12.3` and pip `24.0`. A version allowlist does not cryptographically pin the Python or pip executable bytes, so the hosted toolcache/runner remains an external trust boundary. Dependency SHA-256 verification protects package artifact bytes only to the extent that this local pip verifier correctly performs hash verification. PyPI remains an availability/metadata dependency, although a substituted package artifact cannot pass `--require-hashes` without a reviewed digest.
 
-Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed dependency version, closure, artifact hash, or Action SHA remains an explicit code-review event.
+Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed dependency version, closure, artifact hash, or Action SHA remains an explicit code-review event. Changes to the reviewed runner/Python/pip provenance file are likewise expected to be deliberate review events when the hosted environment moves.
 
 The `scripts/check_release_integrity.py` gate rejects:
 
@@ -75,6 +75,8 @@ The `scripts/check_release_integrity.py` gate rejects:
 - dependency installs that differ from the isolated, hash-required, no-deps, no-cache, binary-only, explicit-index contract or omit a matching `pip check`;
 - moving runner aliases or workflows that do not verify the reviewed runner provenance once per job;
 - setup-python versions that do not use reviewed exact patch versions;
+- setup-python jobs that do not verify the reviewed pip bootstrap version;
+- ambient-Python jobs that do not verify the reviewed Python and pip versions;
 - missing Dependabot coverage;
 - missing release/SBOM/immutability controls;
 - release workflows that omit clean artifact-directory reset, exact build output, validated checksum generation, or exact versioned publication paths;
@@ -85,11 +87,11 @@ The `scripts/check_release_integrity.py` gate rejects:
 
 Before trusting a release, verify the release is immutable in GitHub, compare downloaded artifact hashes with `SHA256SUMS`, and verify GitHub artifact attestations for the repository/tag. A full commit SHA remains the strongest source-level pin for the composite Action.
 
-A successful attestation proves the artifact was produced by the recorded GitHub Actions workflow identity. It does **not** prove the source code is vulnerability-free, that the hosted runner image is cryptographically immutable, or that the scanner can recognize every possible agent capability.
+A successful attestation proves the artifact was produced by the recorded GitHub Actions workflow identity. It does **not** prove the source code is vulnerability-free, that the hosted runner/Python/pip executables are cryptographically immutable, or that the scanner can recognize every possible agent capability.
 
 ## Compromise and revocation
 
-If a release, workflow credential, dependency pin/hash, Action pin, runner image, or maintainer account is suspected to be compromised:
+If a release, workflow credential, dependency pin/hash, Action pin, runner image, Python/pip bootstrap, or maintainer account is suspected to be compromised:
 
 1. stop recommending the affected release immediately;
 2. revoke/rotate affected credentials and disable the compromised publication path;
