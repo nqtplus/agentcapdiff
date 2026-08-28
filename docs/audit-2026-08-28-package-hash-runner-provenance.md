@@ -35,6 +35,6 @@ Package/runtime version remains `1.0.0`. Capability, policy, JSON, SARIF, snapsh
 
 GitHub-hosted `ubuntu-24.04` selects a runner family rather than an immutable VM image digest. The observed image version is therefore checked after scheduling and the job fails closed if it differs from the reviewed value; this is an allowlist, not cryptographic VM-image pinning.
 
-The setup-python Action is commit-SHA pinned, exact Python patches are requested, and pip `26.2.1` is version-allowlisted, but the Python/pip executable bytes supplied by the hosted toolcache are not cryptographically pinned by this repository. Dependency SHA-256 verification depends on that local verifier behaving correctly. PyPI also remains an external availability/metadata dependency, although package bytes not matching a reviewed hash cannot pass the install gate.
+The setup-python Action is commit-SHA pinned, exact Python patches are requested, and pip `26.2.1` is version-allowlisted, but the Python/pip executable bytes supplied by the hosted toolcache are not cryptographically pinned by this repository. Dependency SHA-256 verification depends on that local verifier behaving correctly. PyPI remains an external availability/metadata dependency; the explicit simple-index URL is reviewable, and package bytes not matching a reviewed hash cannot pass the install gate.
 
 UNKNOWN is not SAFE.
