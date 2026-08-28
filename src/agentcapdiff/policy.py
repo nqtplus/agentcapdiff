@@ -11,6 +11,11 @@ from .models import Capability, Finding
 
 _POLICY_SCHEMA_VERSION = 1
 _MAX_INHERITANCE_DEPTH = 16
+_POLICY_MAX_FILE_BYTES = 262_144
+_POLICY_MAX_TOTAL_BYTES = 1_048_576
+_POLICY_MAX_FILES = 64
+_POLICY_MAX_DEPTH = 64
+_POLICY_MAX_NODES = 20_000
 _MAPPING_FIELDS = frozenset({"allow_by_tool", "scope_constraints", "trust_boundaries"})
 _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
 
@@ -48,6 +53,12 @@ class Policy:
     trust_boundaries: dict[str, TrustBoundary] = field(default_factory=dict)
     suppressions: tuple[Suppression, ...] = ()
     sources: tuple[str, ...] = ()
+
+
+@dataclass
+class _PolicyBudget:
+    files: int = 0
+    total_bytes: int = 0
 
 
 def _string_set(value: Any, field_name: str) -> set[str]:
@@ -204,10 +215,81 @@ def _display_source(path: Path, root: Path) -> str:
         return path.name
 
 
+def _validate_policy_structure(value: Any, source: Path) -> None:
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    visited: set[int] = set()
+    nodes = 0
+
+    while stack:
+        current, depth = stack.pop()
+        if depth > _POLICY_MAX_DEPTH:
+            raise ValueError(
+                f"Policy nesting exceeds depth limit {_POLICY_MAX_DEPTH}: {source}"
+            )
+        if not isinstance(current, (dict, list)):
+            continue
+
+        object_id = id(current)
+        if object_id in visited:
+            continue
+        visited.add(object_id)
+        nodes += 1
+        if nodes > _POLICY_MAX_NODES:
+            raise ValueError(
+                f"Policy structure exceeds node limit {_POLICY_MAX_NODES}: {source}"
+            )
+
+        children = current.values() if isinstance(current, dict) else current
+        for child in children:
+            if isinstance(child, (dict, list)):
+                stack.append((child, depth + 1))
+
+
+def _read_policy_mapping(path: Path, budget: _PolicyBudget) -> dict[str, Any]:
+    budget.files += 1
+    if budget.files > _POLICY_MAX_FILES:
+        raise ValueError(f"Policy inheritance exceeds file limit {_POLICY_MAX_FILES}")
+
+    try:
+        with path.open("rb") as handle:
+            payload = handle.read(_POLICY_MAX_FILE_BYTES + 1)
+    except OSError as exc:
+        raise ValueError(f"Policy file cannot be read safely: {path}") from exc
+
+    if len(payload) > _POLICY_MAX_FILE_BYTES:
+        raise ValueError(
+            f"Policy file exceeds {_POLICY_MAX_FILE_BYTES} byte limit: {path}"
+        )
+    new_total = budget.total_bytes + len(payload)
+    if new_total > _POLICY_MAX_TOTAL_BYTES:
+        raise ValueError(
+            f"Policy input exceeds total byte limit {_POLICY_MAX_TOTAL_BYTES}: {path}"
+        )
+    budget.total_bytes = new_total
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeError as exc:
+        raise ValueError(f"Policy file is not valid UTF-8: {path}") from exc
+
+    try:
+        raw: Any = yaml.safe_load(text) or {}
+    except (yaml.YAMLError, RecursionError) as exc:
+        raise ValueError(
+            f"Policy YAML is malformed or exceeds parser safety limits: {path}"
+        ) from exc
+
+    _validate_policy_structure(raw, path)
+    if not isinstance(raw, dict):
+        raise ValueError("Policy must be a YAML mapping")
+    return raw
+
+
 def _load_raw_policy(
     path: Path,
     root: Path,
     stack: tuple[Path, ...],
+    budget: _PolicyBudget,
 ) -> tuple[dict[str, Any], list[str]]:
     unresolved = path
     if unresolved.is_symlink():
@@ -225,9 +307,7 @@ def _load_raw_policy(
     if not resolved.exists():
         raise FileNotFoundError(resolved)
 
-    raw: Any = yaml.safe_load(resolved.read_text(encoding="utf-8")) or {}
-    if not isinstance(raw, dict):
-        raise ValueError("Policy must be a YAML mapping")
+    raw = _read_policy_mapping(resolved, budget)
 
     extends = raw.get("extends", [])
     if isinstance(extends, str):
@@ -243,7 +323,7 @@ def _load_raw_policy(
         if parent_rel.is_absolute():
             raise ValueError("Policy inheritance does not allow absolute paths")
         parent_path = resolved.parent / parent_rel
-        parent_raw, parent_sources = _load_raw_policy(parent_path, root, next_stack)
+        parent_raw, parent_sources = _load_raw_policy(parent_path, root, next_stack, budget)
         merged = _merge_raw_policy(merged, parent_raw)
         for source in parent_sources:
             if source not in sources:
@@ -261,7 +341,7 @@ def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
         return Policy()
     current_day = today or datetime.now(UTC).date()
     root = path.resolve().parent
-    raw, sources = _load_raw_policy(path, root, ())
+    raw, sources = _load_raw_policy(path, root, (), _PolicyBudget())
     unknown_scope = raw.get("unknown_scope", "review")
     if unknown_scope not in {"deny", "review", "ignore"}:
         raise ValueError("Policy unknown_scope must be one of: deny, review, ignore")

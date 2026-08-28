@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ class DiscoveryLimits:
     max_documents: int = 1_000
     max_depth: int = 64
     max_nodes_per_document: int = 100_000
+    max_entries: int = 50_000
 
 
 DEFAULT_LIMITS = DiscoveryLimits()
@@ -38,9 +40,12 @@ def _read(path: Path, limits: DiscoveryLimits) -> tuple[Any, int]:
             f"input file exceeds {limits.max_file_bytes} byte limit: {path} ({size} bytes)"
         )
     text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        return json.loads(text), size
-    return yaml.safe_load(text), size
+    try:
+        if path.suffix.lower() == ".json":
+            return json.loads(text), size
+        return yaml.safe_load(text), size
+    except RecursionError as exc:
+        raise DiscoveryLimitError(f"input parser recursion exceeds safety limit: {path}") from exc
 
 
 def _schema(item: dict[str, Any], key: str) -> dict[str, Any] | None:
@@ -175,6 +180,22 @@ def _walk(value: Any, source: str, out: list[ToolRecord], limits: DiscoveryLimit
                     stack.append((child, depth + 1))
 
 
+def _candidate_files(root: Path, limits: DiscoveryLimits) -> Iterator[Path]:
+    if root.is_file():
+        yield root
+        return
+    if not root.is_dir():
+        raise DiscoveryLimitError(f"scan path must be a regular file or directory: {root}")
+
+    for entries, path in enumerate(root.rglob("*"), start=1):
+        if entries > limits.max_entries:
+            raise DiscoveryLimitError(
+                f"filesystem entry traversal exceeds limit {limits.max_entries}: {root}"
+            )
+        if path.is_file():
+            yield path
+
+
 def discover_tools(
     root: Path,
     limits: DiscoveryLimits = DEFAULT_LIMITS,
@@ -185,7 +206,7 @@ def discover_tools(
         raise DiscoveryLimitError(f"refusing symlinked scan root: {root}")
 
     root_boundary = root.resolve() if root.is_dir() else root.parent.resolve()
-    candidates = (root,) if root.is_file() else (p for p in root.rglob("*") if p.is_file())
+    candidates = _candidate_files(root, limits)
     found: list[ToolRecord] = []
     total_bytes = 0
     documents = 0

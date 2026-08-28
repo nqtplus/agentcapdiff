@@ -48,6 +48,18 @@ def test_rejects_excessive_nesting(tmp_path: Path):
         discover_tools(tmp_path, DiscoveryLimits(max_depth=5))
 
 
+def test_parser_recursion_is_reported_as_limit_error(tmp_path: Path, monkeypatch):
+    path = tmp_path / "parser-recursion.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def raise_recursion(_text: str):
+        raise RecursionError("simulated parser recursion")
+
+    monkeypatch.setattr("agentcapdiff.discovery.json.loads", raise_recursion)
+    with pytest.raises(DiscoveryLimitError, match="parser recursion exceeds safety limit"):
+        discover_tools(path)
+
+
 def test_rejects_total_input_budget(tmp_path: Path):
     for index in range(3):
         (tmp_path / f"tool-{index}.json").write_text(
@@ -66,6 +78,14 @@ def test_rejects_total_input_budget(tmp_path: Path):
             tmp_path,
             DiscoveryLimits(max_file_bytes=1_024, max_total_bytes=120),
         )
+
+
+def test_rejects_filesystem_entry_traversal_budget(tmp_path: Path):
+    for index in range(5):
+        (tmp_path / f"irrelevant-{index}.txt").write_text("ignored", encoding="utf-8")
+
+    with pytest.raises(DiscoveryLimitError, match="filesystem entry traversal exceeds limit"):
+        discover_tools(tmp_path, DiscoveryLimits(max_entries=4))
 
 
 def test_yaml_alias_cycle_does_not_recurse_forever(tmp_path: Path):
