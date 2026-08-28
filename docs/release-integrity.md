@@ -15,12 +15,16 @@ Do not use `@main` as a production trust anchor. Do not move or reuse an existin
 
 ## Release artifacts
 
-The tag-triggered release workflow builds the wheel and source distribution, then generates:
+The tag-triggered release workflow first removes and recreates the `dist/` and `release/` directories so a tracked/stale file or symlink cannot silently join the release set. The build must then produce exactly the two expected version-matched artifacts: the pure-Python wheel and source distribution. Any missing, extra, symlinked, redirected, or non-regular artifact causes the release metadata step to fail closed.
 
-- `agentcapdiff.spdx.json` — SPDX 2.3 SBOM for the built release artifacts plus declared runtime dependencies;
-- `SHA256SUMS` — SHA-256 hashes for the wheel and source distribution;
+The workflow then generates:
+
+- `agentcapdiff.spdx.json` — SPDX 2.3 SBOM for the exact validated wheel/source distribution plus declared runtime dependencies;
+- `SHA256SUMS` — SHA-256 hashes derived from the same validated artifact reads used by the SBOM;
 - GitHub artifact attestations for the built artifacts;
 - a GitHub SBOM attestation that binds the SPDX document to those artifacts.
+
+The SBOM/checksum generator rejects symlinked output files and symlink-traversing output directories, pre-validates both auxiliary output destinations, and publishes each metadata file through a same-directory temporary file plus atomic replacement. It does not create arbitrary parent directories. The release workflow uploads exact versioned wheel/sdist paths and exact SBOM/checksum paths rather than a broad publication glob.
 
 The SBOM generator uses `SOURCE_DATE_EPOCH` from the tagged commit when invoked by CI so its creation timestamp is reproducible for the same release input. Artifact hashes remain the authoritative byte-level identity.
 
@@ -54,6 +58,8 @@ The `scripts/check_release_integrity.py` gate rejects:
 - unpinned build dependencies or direct CI dependencies;
 - missing Dependabot coverage;
 - missing release/SBOM/immutability controls;
+- release workflows that omit clean artifact-directory reset, exact build output, validated checksum generation, or exact versioned publication paths;
+- broad `sha256sum dist/*` / `dist/* release/*` release patterns;
 - a release tag that does not exactly match package/runtime version metadata.
 
 ## Verification
