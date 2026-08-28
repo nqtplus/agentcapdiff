@@ -9,7 +9,7 @@ The release input is the exact Git commit referenced by a SemVer tag such as `v0
 For production use, prefer either:
 
 1. a reviewed full AgentCapDiff commit SHA; or
-2. an AgentCapDiff release tag that GitHub reports as immutable and whose artifacts/attestations have been verified.
+2. an AgentCapDiff release tag that GitHub reports as immutable and whose artifacts/attestations have been verified against the exact repository, signer workflow, tag/ref, source commit, and artifact digests.
 
 Do not use `@main` as a production trust anchor. Do not move or reuse an existing release tag.
 
@@ -21,12 +21,18 @@ The workflow then generates:
 
 - `agentcapdiff.spdx.json` — SPDX 2.3 SBOM for the exact validated wheel/source distribution plus declared runtime dependencies;
 - `SHA256SUMS` — SHA-256 hashes derived from the same validated artifact reads used by the SBOM;
-- GitHub artifact attestations for the built artifacts;
-- a GitHub SBOM attestation that binds the SPDX document to those artifacts.
+- GitHub build-provenance attestations for exactly the subjects listed in `SHA256SUMS`;
+- a GitHub SPDX SBOM attestation bound to the same exact subjects.
 
 The SBOM/checksum generator rejects symlinked output files and symlink-traversing output directories, pre-validates both auxiliary output destinations, and publishes each metadata file through a same-directory temporary file plus atomic replacement. It does not create arbitrary parent directories. The release workflow uploads exact versioned wheel/sdist paths and exact SBOM/checksum paths rather than a broad publication glob.
 
 The SBOM generator uses `SOURCE_DATE_EPOCH` from the tagged commit when invoked by CI so its creation timestamp is reproducible for the same release input. Artifact hashes remain the authoritative byte-level identity.
+
+Both `actions/attest` steps consume `release/SHA256SUMS` through `subject-checksums`. They do not independently rediscover release subjects with a filesystem glob. The pinned `actions/attest` version is reviewed and the repository integrity gate rejects a regression to `subject-path` or `subject-digest` in this release workflow.
+
+Before `gh release create` can run, the publish job verifies the generated build-provenance and SBOM attestation bundles against the local release artifacts. Verification requires the exact AgentCapDiff repository, the exact `release.yml` signer workflow, the exact release tag ref, the exact source commit, the exact signer-workflow digest, GitHub Actions OIDC issuer, GitHub-hosted runner provenance, the expected predicate type, and the expected artifact subject name/digest. For the SPDX attestation, the signed predicate must also equal the `agentcapdiff.spdx.json` file that will be published.
+
+See `docs/attestation-verification.md` for the consumer verification contract and exact commands.
 
 ## Immutable release rule
 
@@ -44,7 +50,7 @@ The release workflow starts with `permissions: {}` and grants permissions per jo
 
 Every `actions/checkout` step in repository workflows explicitly sets `persist-credentials: false`. The checkout token is therefore not intentionally stored in repository Git configuration for later shell/build/test steps; checkout post-job cleanup is defense in depth rather than the primary credential-removal boundary. Release API operations that genuinely require write authority receive `${{ github.token }}` only as step-scoped `GH_TOKEN` environment input to the relevant `gh` commands.
 
-Publishing cannot begin until validation and CodeQL succeed. Validation runs the release-integrity checker, Ruff, the complete test suite, the reproducible safety benchmark, and AgentCapDiff's self-policy scan.
+Publishing cannot begin until validation and CodeQL succeed. Validation runs the release-integrity checker, attestation-integrity checker, Ruff, the complete test suite, the reproducible safety benchmark, and AgentCapDiff's self-policy scan.
 
 ## Dependency, Python, runner, and Action integrity
 
@@ -62,7 +68,7 @@ The setup-python Action itself is commit-SHA pinned, exact Python patches `3.11.
 
 Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed dependency version, closure, artifact hash, or Action SHA remains an explicit code-review event. Changes to the reviewed runner/Python/pip provenance file are likewise expected to be deliberate review events when the hosted environment moves.
 
-The `scripts/check_release_integrity.py` gate rejects:
+The `scripts/check_release_integrity.py` and `scripts/check_attestation_integrity.py` gates reject, among other things:
 
 - floating/non-SHA GitHub Action refs;
 - any `actions/checkout` step that does not explicitly set `persist-credentials: false`;
@@ -78,6 +84,9 @@ The `scripts/check_release_integrity.py` gate rejects:
 - setup-python jobs that do not verify the reviewed pip bootstrap version;
 - ambient-Python jobs that do not verify the reviewed Python and pip versions;
 - missing Dependabot coverage;
+- release attestations that are not sourced from the validated `SHA256SUMS` subject set;
+- removal or weakening of the pre-publication strict attestation verifier;
+- missing repository/signer/source/predicate/hosted-runner constraints in the verifier or consumer guidance;
 - missing release/SBOM/immutability controls;
 - release workflows that omit clean artifact-directory reset, exact build output, validated checksum generation, or exact versioned publication paths;
 - broad `sha256sum dist/*` / `dist/* release/*` release patterns;
@@ -85,13 +94,15 @@ The `scripts/check_release_integrity.py` gate rejects:
 
 ## Verification
 
-Before trusting a release, verify the release is immutable in GitHub, compare downloaded artifact hashes with `SHA256SUMS`, and verify GitHub artifact attestations for the repository/tag. A full commit SHA remains the strongest source-level pin for the composite Action.
+Before trusting a release, first verify that the release is immutable in GitHub. Then verify the local wheel/source distribution against `SHA256SUMS` and use the strict policy in `docs/attestation-verification.md` to verify both build-provenance and SPDX attestations.
 
-A successful attestation proves the artifact was produced by the recorded GitHub Actions workflow identity. It does **not** prove the source code is vulnerability-free, that the hosted runner/Python/pip executables are cryptographically immutable, or that the scanner can recognize every possible agent capability.
+Do not treat repository-only attestation verification as the highest-assurance check. A production verification should constrain the signer workflow, source tag/ref, source commit, signer-workflow digest, runner class, and predicate type. For the SBOM, compare the verified statement predicate with the downloaded SPDX JSON.
+
+A successful attestation proves that a trusted verification chain accepted a claim from the constrained GitHub Actions identity about the exact subject bytes. It does **not** prove the source code is vulnerability-free, that the hosted runner/Python/pip executables are cryptographically immutable, or that the scanner can recognize every possible agent capability. Predicate content is workflow-controlled evidence and must not be interpreted as independent proof that a compromised authorized workflow was truthful.
 
 ## Compromise and revocation
 
-If a release, workflow credential, dependency pin/hash, Action pin, runner image, Python/pip bootstrap, or maintainer account is suspected to be compromised:
+If a release, workflow credential, dependency pin/hash, Action pin, runner image, Python/pip bootstrap, attestation signer/bundle, or maintainer account is suspected to be compromised:
 
 1. stop recommending the affected release immediately;
 2. revoke/rotate affected credentials and disable the compromised publication path;
