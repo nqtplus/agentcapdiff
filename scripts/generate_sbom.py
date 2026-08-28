@@ -129,7 +129,9 @@ def _release_artifacts(dist_dir: Path, version: str) -> list[Path]:
         except OSError as exc:
             raise ReleaseArtifactError(f"cannot inspect release artifact: {artifact}") from exc
         if stat.S_ISLNK(artifact_stat.st_mode) or not stat.S_ISREG(artifact_stat.st_mode):
-            raise ReleaseArtifactError(f"release artifact must be a non-symlink regular file: {artifact}")
+            raise ReleaseArtifactError(
+                f"release artifact must be a non-symlink regular file: {artifact}"
+            )
     return entries
 
 
@@ -245,7 +247,9 @@ def _validate_output_target(path: Path) -> Path:
     except OSError as exc:
         raise ReleaseArtifactError(f"cannot inspect release output: {candidate}") from exc
     if stat.S_ISLNK(target_stat.st_mode) or not stat.S_ISREG(target_stat.st_mode):
-        raise ReleaseArtifactError(f"release output must be a non-symlink regular file: {candidate}")
+        raise ReleaseArtifactError(
+            f"release output must be a non-symlink regular file: {candidate}"
+        )
     return candidate
 
 
@@ -275,7 +279,9 @@ def _atomic_write_text(target: Path, text: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Generate validated SPDX/checksum release metadata.")
+    parser = argparse.ArgumentParser(
+        description="Generate validated SPDX/checksum release metadata."
+    )
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--output", type=Path, required=True)
