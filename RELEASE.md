@@ -36,11 +36,23 @@ A successful tag-triggered release creates:
 - wheel and source distribution;
 - `SHA256SUMS` for built artifacts;
 - `agentcapdiff.spdx.json` SPDX 2.3 SBOM;
-- GitHub build provenance attestation for release artifacts;
-- GitHub SBOM attestation bound to those artifacts;
+- GitHub build-provenance attestation for the exact checksum-manifest subjects;
+- GitHub SPDX SBOM attestation bound to the same subjects;
 - an immutable GitHub Release.
 
+Both attestation steps consume `release/SHA256SUMS` via `subject-checksums`, so subject identity comes from the same validated artifact hashes used for release metadata rather than a second filesystem glob.
+
+Before `gh release create` runs, the publish job verifies the generated attestation bundles against the local wheel/source distribution and published SBOM. The verification must constrain repository `nqtplus/agentcapdiff`, signer workflow `nqtplus/agentcapdiff/.github/workflows/release.yml`, the exact release tag ref, exact source commit, signer workflow digest, GitHub Actions OIDC issuer, GitHub-hosted runner class, and exact predicate type. The verified artifact subject name/digest must match the checksum manifest; the SPDX predicate must equal the `agentcapdiff.spdx.json` asset to be published.
+
 The workflow starts with `permissions: {}` and grants only per-job permissions. Validation and CodeQL must finish successfully before the publish job receives write/attestation permissions.
+
+## Consumer attestation verification
+
+Do not accept a production artifact merely because `gh attestation verify <artifact> --repo nqtplus/agentcapdiff` succeeds. Repository-only identity is intentionally broader than the release trust policy.
+
+For release verification, use `scripts/verify_release_attestations.py` from a reviewed source commit or follow the equivalent strict commands in `docs/attestation-verification.md`. The verifier checks local hashes, signed subjects, signer identity, source ref/commit, signer digest, runner class, predicate type, and the downloaded SPDX predicate before success.
+
+The exact reviewed source commit SHA is an independent trust input. Do not derive the expected source commit solely from an unverified release artifact or from workflow-controlled predicate metadata.
 
 ## Production pinning
 
@@ -50,10 +62,10 @@ For the composite GitHub Action, a reviewed full commit SHA is the strongest sou
 - uses: nqtplus/agentcapdiff@<reviewed-full-commit-sha>
 ```
 
-A reviewed verified immutable release tag may also be used where that release, checksums, SBOM, and attestations have been verified. Do not rely on `@main` for production. Never move or reuse a released version tag.
+A reviewed verified immutable release tag may also be used where that release, checksums, SBOM, and strict attestations have been verified. Do not rely on `@main` for production. Never move or reuse a released version tag.
 
 ## Historical v0.9 release gate
 
 v0.9 established the supply-chain baseline carried into 1.x: exact Action/dependency pins, benchmark/release-integrity gates, SPDX SBOM, checksums, attestations, least-privilege workflow permissions, immutable release enforcement, and parser/path/output/CI trust-boundary review.
 
-See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, and `docs/release-integrity.md` for artifact verification, immutable-release requirements, and compromise/revocation procedures.
+See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, `docs/release-integrity.md` for the complete release trust model, and `docs/attestation-verification.md` for strict attestation verification and replay/misbinding resistance.
