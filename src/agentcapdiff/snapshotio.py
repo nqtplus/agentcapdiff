@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,10 @@ class SnapshotLimits:
 
 DEFAULT_SNAPSHOT_LIMITS = SnapshotLimits()
 _SEVERITIES = frozenset({"INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"})
+_CONFIDENCE = frozenset({"low", "medium", "high"})
+_SCOPE_KINDS = frozenset({"restricted", "broad", "unknown"})
 _UNKNOWN_SCOPE = frozenset({"deny", "review", "ignore"})
+_TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
 
 
 def _fingerprint(capabilities: list[str]) -> str:
@@ -67,9 +71,16 @@ def _record_list(value: Any, field: str, source: Path) -> list[dict[str, Any]]:
     return value
 
 
-def _optional_string(record: dict[str, Any], field: str, source: Path) -> None:
-    value = record.get(field)
+def _optional_string(
+    record: dict[str, Any],
+    key: str,
+    source: Path,
+    *,
+    label: str | None = None,
+) -> None:
+    value = record.get(key)
     if value is not None and not isinstance(value, str):
+        field = label or key
         raise SnapshotArtifactError(
             f"snapshot field {field} must be a string when present: {source}"
         )
@@ -80,6 +91,11 @@ def _validate_policy(policy: Any, source: Path) -> None:
         return
     if not isinstance(policy, dict):
         raise SnapshotArtifactError(f"snapshot policy must be an object or null: {source}")
+
+    if "schema" in policy:
+        schema = policy["schema"]
+        if isinstance(schema, bool) or not isinstance(schema, int) or schema != 1:
+            raise SnapshotArtifactError(f"unsupported snapshot policy schema; expected 1: {source}")
 
     for field in ("deny", "require_review", "sources"):
         if field in policy:
@@ -120,26 +136,67 @@ def _validate_policy(policy: Any, source: Path) -> None:
                     "snapshot policy.scope_constraints entries must be objects: "
                     f"{source}"
                 )
-            for field in ("allowed_kinds", "allowed_values"):
-                if field in constraint:
-                    _string_list(
-                        constraint[field],
-                        f"policy.scope_constraints.{capability}.{field}",
-                        source,
+            if "allowed_kinds" in constraint:
+                allowed_kinds = _string_list(
+                    constraint["allowed_kinds"],
+                    f"policy.scope_constraints.{capability}.allowed_kinds",
+                    source,
+                )
+                if not set(allowed_kinds).issubset(_SCOPE_KINDS):
+                    raise SnapshotArtifactError(
+                        "snapshot policy scope constraint has invalid allowed_kinds: "
+                        f"{source}"
                     )
+            if "allowed_values" in constraint:
+                _string_list(
+                    constraint["allowed_values"],
+                    f"policy.scope_constraints.{capability}.allowed_values",
+                    source,
+                )
 
     boundaries = policy.get("trust_boundaries")
-    if boundaries is not None and not isinstance(boundaries, dict):
-        raise SnapshotArtifactError(
-            f"snapshot policy.trust_boundaries must be an object: {source}"
-        )
+    if boundaries is not None:
+        if not isinstance(boundaries, dict):
+            raise SnapshotArtifactError(
+                f"snapshot policy.trust_boundaries must be an object: {source}"
+            )
+        for tool, annotation in boundaries.items():
+            if not isinstance(annotation, dict):
+                raise SnapshotArtifactError(
+                    f"snapshot trust boundary for {tool} must be an object: {source}"
+                )
+            for field in ("boundary", "trust", "note"):
+                _optional_string(
+                    annotation,
+                    field,
+                    source,
+                    label=f"policy.trust_boundaries.{tool}.{field}",
+                )
+            trust = annotation.get("trust")
+            if trust is not None and trust not in _TRUST_LEVELS:
+                raise SnapshotArtifactError(
+                    f"snapshot trust boundary for {tool} has invalid trust: {source}"
+                )
 
     suppressions = policy.get("suppressions")
     if suppressions is not None:
         items = _record_list(suppressions, "policy.suppressions", source)
         for item in items:
             for field in ("rule_id", "reason", "expires", "capability", "tool"):
-                _optional_string(item, f"policy.suppressions.{field}", source)
+                _optional_string(
+                    item,
+                    field,
+                    source,
+                    label=f"policy.suppressions.{field}",
+                )
+            expiry = item.get("expires")
+            if isinstance(expiry, str):
+                try:
+                    date.fromisoformat(expiry)
+                except ValueError as exc:
+                    raise SnapshotArtifactError(
+                        f"snapshot policy suppression has invalid expiry date: {source}"
+                    ) from exc
 
 
 def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
@@ -176,13 +233,19 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
     if findings is not None:
         for item in _record_list(findings, "findings", source):
             for field in ("severity", "rule_id", "message", "capability", "tool"):
-                _optional_string(item, f"findings.{field}", source)
+                _optional_string(item, field, source, label=f"findings.{field}")
+            item_severity = item.get("severity")
+            if item_severity is not None and item_severity not in _SEVERITIES:
+                raise SnapshotArtifactError(f"snapshot finding severity is invalid: {source}")
 
     scopes = snapshot.get("scopes")
     if scopes is not None:
         for item in _record_list(scopes, "scopes", source):
             for field in ("capability", "tool", "kind", "reason"):
-                _optional_string(item, f"scopes.{field}", source)
+                _optional_string(item, field, source, label=f"scopes.{field}")
+            kind = item.get("kind")
+            if kind is not None and kind not in _SCOPE_KINDS:
+                raise SnapshotArtifactError(f"snapshot scope kind is invalid: {source}")
             if "values" in item:
                 _string_list(item["values"], "scopes.values", source)
 
@@ -192,11 +255,31 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
             raise SnapshotArtifactError(
                 f"snapshot capability_graph must be an object or null: {source}"
             )
+        graph_schema = graph.get("schema_version")
+        if graph_schema is not None and graph_schema != "1":
+            raise SnapshotArtifactError(
+                f"unsupported capability graph schema version; expected 1: {source}"
+            )
         paths = graph.get("paths")
         if paths is not None:
             for item in _record_list(paths, "capability_graph.paths", source):
                 for field in ("id", "title", "severity", "confidence", "message"):
-                    _optional_string(item, f"capability_graph.paths.{field}", source)
+                    _optional_string(
+                        item,
+                        field,
+                        source,
+                        label=f"capability_graph.paths.{field}",
+                    )
+                path_severity = item.get("severity")
+                if path_severity is not None and path_severity not in _SEVERITIES:
+                    raise SnapshotArtifactError(
+                        f"snapshot capability path severity is invalid: {source}"
+                    )
+                confidence = item.get("confidence")
+                if confidence is not None and confidence not in _CONFIDENCE:
+                    raise SnapshotArtifactError(
+                        f"snapshot capability path confidence is invalid: {source}"
+                    )
                 for field in ("capabilities", "tools", "evidence"):
                     if field in item:
                         _string_list(
