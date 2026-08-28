@@ -13,9 +13,14 @@ VERSION = "1.0.0"
 WHEEL = f"agentcapdiff-{VERSION}-py3-none-any.whl"
 SDIST = f"agentcapdiff-{VERSION}.tar.gz"
 CHECKOUT_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+DUMMY_HASH = "a" * 64
 CHECK_RELEASE_INTEGRITY = runpy.run_path(
     str(ROOT / "scripts" / "check_release_integrity.py"),
     run_name="check_release_integrity",
+)
+CHECK_CI_ENVIRONMENT = runpy.run_path(
+    str(ROOT / "scripts" / "check_ci_environment.py"),
+    run_name="check_ci_environment",
 )
 
 
@@ -56,6 +61,29 @@ def _make_release_dist(tmp_path: pathlib.Path) -> pathlib.Path:
     return dist
 
 
+def _write_ci_environment(path: pathlib.Path, **overrides: object) -> None:
+    payload: dict[str, object] = {
+        "runner_label": "ubuntu-24.04",
+        "runner_environment": "github-hosted",
+        "runner_os": "Linux",
+        "runner_arch": "X64",
+        "image_os": "ubuntu24",
+        "image_version": "20260823.283.1",
+        "os_id": "ubuntu",
+        "os_version": "24.04",
+        "ambient_python": "3.12.3",
+        "ambient_pip": "24.0",
+        "setup_python_versions": ["3.11.16", "3.12.14", "3.13.15"],
+    }
+    payload.update(overrides)
+    requirements = path / "requirements"
+    requirements.mkdir(parents=True, exist_ok=True)
+    (requirements / "ci-environment.json").write_text(
+        json.dumps(payload),
+        encoding="utf-8",
+    )
+
+
 def test_release_integrity_contract_passes_for_repository():
     result = subprocess.run(
         [sys.executable, "scripts/check_release_integrity.py"],
@@ -91,7 +119,8 @@ def test_dependency_lock_rejects_non_exact_transitive_pin(tmp_path: pathlib.Path
     requirements.mkdir()
     (requirements / "ci-direct.txt").write_text("pytest==9.1.1\n", encoding="utf-8")
     (requirements / "ci-lock.txt").write_text(
-        "pytest==9.1.1\npluggy>=1.6.0\n",
+        f"pytest==9.1.1 --hash=sha256:{DUMMY_HASH}\n"
+        f"pluggy>=1.6.0 --hash=sha256:{DUMMY_HASH}\n",
         encoding="utf-8",
     )
     check_dependency_lock = CHECK_RELEASE_INTEGRITY["_check_dependency_lock"]
@@ -100,12 +129,27 @@ def test_dependency_lock_rejects_non_exact_transitive_pin(tmp_path: pathlib.Path
         check_dependency_lock(tmp_path)
 
 
+def test_dependency_lock_rejects_missing_artifact_hash(tmp_path: pathlib.Path):
+    requirements = tmp_path / "requirements"
+    requirements.mkdir()
+    (requirements / "ci-direct.txt").write_text("pytest==9.1.1\n", encoding="utf-8")
+    (requirements / "ci-lock.txt").write_text(
+        f"pytest==9.1.1 --hash=sha256:{DUMMY_HASH}\npluggy==1.6.0\n",
+        encoding="utf-8",
+    )
+    check_dependency_lock = CHECK_RELEASE_INTEGRITY["_check_dependency_lock"]
+
+    with pytest.raises(ValueError, match="lacks artifact SHA-256"):
+        check_dependency_lock(tmp_path)
+
+
 def test_dependency_lock_rejects_direct_version_mismatch(tmp_path: pathlib.Path):
     requirements = tmp_path / "requirements"
     requirements.mkdir()
     (requirements / "ci-direct.txt").write_text("pytest==9.1.1\n", encoding="utf-8")
     (requirements / "ci-lock.txt").write_text(
-        "pytest==9.1.0\npluggy==1.6.0\n",
+        f"pytest==9.1.0 --hash=sha256:{DUMMY_HASH}\n"
+        f"pluggy==1.6.0 --hash=sha256:{'b' * 64}\n",
         encoding="utf-8",
     )
     check_dependency_lock = CHECK_RELEASE_INTEGRITY["_check_dependency_lock"]
@@ -132,6 +176,58 @@ def test_dependency_workflow_contract_rejects_pip_cache(tmp_path: pathlib.Path):
 
     with pytest.raises(ValueError, match="pip cache is forbidden"):
         check_dependency_workflow_contract(tmp_path)
+
+
+def test_dependency_workflow_contract_rejects_unhashed_lock_invocation(tmp_path: pathlib.Path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "unsafe.yml").write_text(
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - run: python -m pip install -r requirements/ci-lock.txt\n",
+        encoding="utf-8",
+    )
+    check_dependency_workflow_contract = CHECK_RELEASE_INTEGRITY[
+        "_check_dependency_workflow_contract"
+    ]
+
+    with pytest.raises(ValueError, match="unapproved dependency-lock invocation"):
+        check_dependency_workflow_contract(tmp_path)
+
+
+def test_ci_environment_rejects_moving_runner_alias(tmp_path: pathlib.Path):
+    _write_ci_environment(tmp_path, runner_label="ubuntu-latest")
+    load_ci_environment = CHECK_RELEASE_INTEGRITY["_load_ci_environment"]
+
+    with pytest.raises(ValueError, match="moving alias"):
+        load_ci_environment(tmp_path)
+
+
+def test_ci_environment_rejects_minor_only_setup_python_pin(tmp_path: pathlib.Path):
+    _write_ci_environment(tmp_path, setup_python_versions=["3.11", "3.12.14", "3.13.15"])
+    load_ci_environment = CHECK_RELEASE_INTEGRITY["_load_ci_environment"]
+
+    with pytest.raises(ValueError, match="exact patch"):
+        load_ci_environment(tmp_path)
+
+
+def test_ci_environment_probe_fails_closed_on_image_version_drift(monkeypatch: pytest.MonkeyPatch):
+    config = json.loads((ROOT / "requirements" / "ci-environment.json").read_text(encoding="utf-8"))
+    values = {
+        "GITHUB_ACTIONS": "true",
+        "RUNNER_ENVIRONMENT": config["runner_environment"],
+        "RUNNER_OS": config["runner_os"],
+        "RUNNER_ARCH": config["runner_arch"],
+        "ImageOS": config["image_os"],
+        "ImageVersion": "unexpected-image-version",
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, str(value))
+    check_ci_environment = CHECK_CI_ENVIRONMENT["check"]
+
+    with pytest.raises(ValueError, match="ImageVersion provenance mismatch"):
+        check_ci_environment()
 
 
 def test_spdx_and_checksums_are_reproducible_for_same_exact_artifacts(
