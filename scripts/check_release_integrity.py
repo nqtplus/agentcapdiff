@@ -8,6 +8,8 @@ from pathlib import Path
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 USES_RE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
+CHECKOUT_RE = re.compile(r"^(?P<indent>\s*)-\s+uses:\s*actions/checkout@([^\s#]+)")
+PERSIST_FALSE_RE = re.compile(r"^\s*persist-credentials:\s*false\s*(?:#.*)?$", re.IGNORECASE)
 VERSION_RE = re.compile(r'^__version__\s*=\s*"([^"]+)"$', re.MULTILINE)
 
 
@@ -74,6 +76,36 @@ def _check_release_project_state(root: Path, version: str) -> None:
         _fail(f"CHANGELOG.md lacks [{version}] release entry")
 
 
+def _checkout_step_blocks(text: str) -> list[tuple[int, list[str]]]:
+    lines = text.splitlines()
+    blocks: list[tuple[int, list[str]]] = []
+    for index, line in enumerate(lines):
+        match = CHECKOUT_RE.match(line)
+        if match is None:
+            continue
+        indent = len(match.group("indent"))
+        body: list[str] = []
+        for following in lines[index + 1 :]:
+            if not following.strip():
+                body.append(following)
+                continue
+            leading = len(following) - len(following.lstrip())
+            if leading <= indent:
+                break
+            body.append(following)
+        blocks.append((index + 1, body))
+    return blocks
+
+
+def _check_checkout_credential_persistence(workflow: Path, text: str) -> None:
+    for line_number, body in _checkout_step_blocks(text):
+        if not any(PERSIST_FALSE_RE.match(line) for line in body):
+            _fail(
+                "actions/checkout must set persist-credentials: false "
+                f"in {workflow.name}:{line_number}"
+            )
+
+
 def _check_workflow_action_pins(root: Path) -> None:
     workflow_dir = root / ".github" / "workflows"
     workflows = sorted(workflow_dir.glob("*.y*ml"))
@@ -85,6 +117,7 @@ def _check_workflow_action_pins(root: Path) -> None:
             _fail(f"unsafe pull_request_target trigger is forbidden: {workflow.name}")
         if "write-all" in text:
             _fail(f"write-all permission is forbidden: {workflow.name}")
+        _check_checkout_credential_persistence(workflow, text)
         for reference in USES_RE.findall(text):
             if reference.startswith("./"):
                 continue

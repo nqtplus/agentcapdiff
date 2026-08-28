@@ -42,6 +42,8 @@ The release workflow starts with `permissions: {}` and grants permissions per jo
 - CodeQL: read permissions plus `security-events: write`;
 - publish: only `contents: write`, `id-token: write`, and `attestations: write`.
 
+Every `actions/checkout` step in repository workflows explicitly sets `persist-credentials: false`. The checkout token is therefore not intentionally stored in repository Git configuration for later shell/build/test steps; checkout post-job cleanup is defense in depth rather than the primary credential-removal boundary. Release API operations that genuinely require write authority receive `${{ github.token }}` only as step-scoped `GH_TOKEN` environment input to the relevant `gh` commands.
+
 Publishing cannot begin until validation and CodeQL succeed. Validation runs the release-integrity checker, Ruff, the complete test suite, the reproducible safety benchmark, and AgentCapDiff's self-policy scan.
 
 ## Dependency and Action integrity
@@ -53,6 +55,7 @@ Direct CI/release Python dependencies are reviewed exact pins in `requirements/c
 The `scripts/check_release_integrity.py` gate rejects:
 
 - floating/non-SHA GitHub Action refs;
+- any `actions/checkout` step that does not explicitly set `persist-credentials: false`;
 - `pull_request_target` workflows;
 - `write-all` permissions;
 - unpinned build dependencies or direct CI dependencies;
