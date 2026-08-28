@@ -73,6 +73,7 @@ def _write_ci_environment(path: pathlib.Path, **overrides: object) -> None:
         "os_version": "24.04",
         "ambient_python": "3.12.3",
         "ambient_pip": "24.0",
+        "setup_pip": "26.2.1",
         "setup_python_versions": ["3.11.16", "3.12.14", "3.13.15"],
     }
     payload.update(overrides)
@@ -228,6 +229,30 @@ def test_ci_environment_probe_fails_closed_on_image_version_drift(monkeypatch: p
 
     with pytest.raises(ValueError, match="ImageVersion provenance mismatch"):
         check_ci_environment()
+
+
+def test_ci_environment_probe_fails_closed_on_pip_drift(monkeypatch: pytest.MonkeyPatch):
+    config = json.loads((ROOT / "requirements" / "ci-environment.json").read_text(encoding="utf-8"))
+    values = {
+        "GITHUB_ACTIONS": "true",
+        "RUNNER_ENVIRONMENT": config["runner_environment"],
+        "RUNNER_OS": config["runner_os"],
+        "RUNNER_ARCH": config["runner_arch"],
+        "ImageOS": config["image_os"],
+        "ImageVersion": config["image_version"],
+    }
+    for key, value in values.items():
+        monkeypatch.setenv(key, str(value))
+    check_ci_environment = CHECK_CI_ENVIRONMENT["check"]
+
+    with pytest.raises(ValueError, match="pip version mismatch"):
+        check_ci_environment(platform_python_version(), "0.0.0")
+
+
+def platform_python_version() -> str:
+    import platform
+
+    return platform.python_version()
 
 
 def test_spdx_and_checksums_are_reproducible_for_same_exact_artifacts(
