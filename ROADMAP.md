@@ -146,7 +146,7 @@ Goal: prove that releases are becoming safer and reduce the chance that AgentCap
 - all third-party GitHub Actions are pinned to full commit SHAs and dependency/Action updates are reviewed through Dependabot PRs
 - release artifacts include SHA-256 checksums, an SPDX SBOM, build provenance, and SBOM attestations
 - release workflow starts with no permissions, grants only job-local privileges, and cannot publish before validation + CodeQL pass
-- a production release is accepted only when GitHub reports it immutable; otherwise the workflow removes the mutable release/tag and fails closed
+- a production release is accepted only when GitHub reports it immutable; exact-source workflow-owned mutable/draft release state is cleaned up fail-closed while preserving the source tag for retry/investigation
 - parser, path, output, PR-CI, and release trust boundaries have a documented security review with permanent regression coverage for fixes
 
 ## v1.0 — Safety-gated stable release ✅
