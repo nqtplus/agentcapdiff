@@ -128,15 +128,31 @@ def _check_release_workflow(root: Path) -> None:
         "attestations: write",
         "id-token: write",
         "contents: write",
+        "rm -rf -- dist release",
+        "mkdir -- dist release",
+        "python -m build --no-isolation --outdir dist",
         "python scripts/generate_sbom.py",
+        "--checksums-output release/SHA256SUMS",
         "actions/attest@",
+        'version="${GITHUB_REF_NAME#v}"',
+        '"dist/agentcapdiff-${version}-py3-none-any.whl"',
+        '"dist/agentcapdiff-${version}.tar.gz"',
+        "release/agentcapdiff.spdx.json",
+        "release/SHA256SUMS",
         "gh release create",
         "isImmutable",
-        "SHA256SUMS",
     )
     for fragment in required_fragments:
         if fragment not in release:
             _fail(f"release workflow missing required integrity control: {fragment}")
+
+    forbidden_fragments = (
+        "sha256sum dist/*",
+        "dist/* release/*",
+    )
+    for fragment in forbidden_fragments:
+        if fragment in release:
+            _fail(f"release workflow uses an unconstrained artifact pattern: {fragment}")
 
 
 def check(root: Path, release_tag: str | None = None) -> str:

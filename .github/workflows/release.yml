@@ -83,18 +83,23 @@ jobs:
             echo "::error::Enable GitHub release immutability before publishing a production tag."
             exit 1
           fi
+      - name: Reset release artifact directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- dist release
+          mkdir -- dist release
       - name: Build reviewed source and wheel artifacts
-        run: python -m build --no-isolation
-      - name: Generate SPDX SBOM and checksums
+        run: python -m build --no-isolation --outdir dist
+      - name: Generate validated SPDX SBOM and checksums
         shell: bash
         run: |
           set -euo pipefail
           export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
-          mkdir -p release
           python scripts/generate_sbom.py \
             --dist-dir dist \
-            --output release/agentcapdiff.spdx.json
-          sha256sum dist/* > release/SHA256SUMS
+            --output release/agentcapdiff.spdx.json \
+            --checksums-output release/SHA256SUMS
       - name: Attest build provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
@@ -104,12 +109,18 @@ jobs:
         with:
           subject-path: "dist/*"
           sbom-path: "release/agentcapdiff.spdx.json"
-      - name: Create draft release with all assets
+      - name: Create draft release with exact validated assets
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
           gh release create "$GITHUB_REF_NAME" \
-            dist/* release/* \
+            "dist/agentcapdiff-${version}-py3-none-any.whl" \
+            "dist/agentcapdiff-${version}.tar.gz" \
+            release/agentcapdiff.spdx.json \
+            release/SHA256SUMS \
             --draft \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
