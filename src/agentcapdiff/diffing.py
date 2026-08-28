@@ -9,6 +9,7 @@ from typing import Any
 from .models import UNIVERSAL_CAPABILITY_SCHEMA_VERSION, ScanResult
 from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
+from .snapshotio import DEFAULT_SNAPSHOT_LIMITS, SnapshotLimits, load_snapshot
 
 
 def capability_fingerprint(capabilities: Iterable[str]) -> str:
@@ -351,9 +352,14 @@ def _policy_weakening_warnings(
     return warnings
 
 
-def compare_snapshots(base: Path, head: Path) -> dict[str, Any]:
-    a = json.loads(base.read_text(encoding="utf-8"))
-    b = json.loads(head.read_text(encoding="utf-8"))
+def compare_snapshots(
+    base: Path,
+    head: Path,
+    *,
+    limits: SnapshotLimits = DEFAULT_SNAPSHOT_LIMITS,
+) -> dict[str, Any]:
+    a = load_snapshot(base, limits)
+    b = load_snapshot(head, limits)
     ac, bc = set(a.get("capabilities", [])), set(b.get("capabilities", []))
     at, bt = set(a.get("tools", [])), set(b.get("tools", []))
     base_risk = int(a.get("risk_score", 0))
