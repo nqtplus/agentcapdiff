@@ -92,6 +92,21 @@ def test_snapshot_rejects_inconsistent_capability_fingerprint(tmp_path: Path) ->
         compare_snapshots(base, head)
 
 
+def test_snapshot_rejects_noncanonical_uppercase_fingerprint(tmp_path: Path) -> None:
+    base = tmp_path / "base.json"
+    head = tmp_path / "head.json"
+    fingerprint = capability_fingerprint(["filesystem.read"])
+    _write_snapshot(
+        base,
+        capabilities=["filesystem.read"],
+        capability_fingerprint=fingerprint.upper(),
+    )
+    _write_snapshot(head)
+
+    with pytest.raises(SnapshotArtifactError, match="does not match capabilities"):
+        compare_snapshots(base, head)
+
+
 def test_snapshot_rejects_unknown_schema_version(tmp_path: Path) -> None:
     base = tmp_path / "base.json"
     head = tmp_path / "head.json"
