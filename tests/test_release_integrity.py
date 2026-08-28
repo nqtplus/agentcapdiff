@@ -2,18 +2,21 @@ import hashlib
 import json
 import os
 import pathlib
+import runpy
 import subprocess
 import sys
 
 import pytest
-
-from scripts import check_release_integrity
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 VERSION = "1.0.0"
 WHEEL = f"agentcapdiff-{VERSION}-py3-none-any.whl"
 SDIST = f"agentcapdiff-{VERSION}.tar.gz"
 CHECKOUT_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
+CHECK_RELEASE_INTEGRITY = runpy.run_path(
+    str(ROOT / "scripts" / "check_release_integrity.py"),
+    run_name="check_release_integrity",
+)
 
 
 def _run_generator(
@@ -77,9 +80,10 @@ def test_release_integrity_rejects_checkout_credential_persistence(tmp_path: pat
         f"      - uses: actions/checkout@{CHECKOUT_SHA}\n",
         encoding="utf-8",
     )
+    check_workflow_action_pins = CHECK_RELEASE_INTEGRITY["_check_workflow_action_pins"]
 
     with pytest.raises(ValueError, match="persist-credentials: false"):
-        check_release_integrity._check_workflow_action_pins(tmp_path)
+        check_workflow_action_pins(tmp_path)
 
 
 def test_spdx_and_checksums_are_reproducible_for_same_exact_artifacts(
