@@ -70,7 +70,9 @@ def _record_list(value: Any, field: str, source: Path) -> list[dict[str, Any]]:
 def _optional_string(record: dict[str, Any], field: str, source: Path) -> None:
     value = record.get(field)
     if value is not None and not isinstance(value, str):
-        raise SnapshotArtifactError(f"snapshot field {field} must be a string when present: {source}")
+        raise SnapshotArtifactError(
+            f"snapshot field {field} must be a string when present: {source}"
+        )
 
 
 def _validate_policy(policy: Any, source: Path) -> None:
@@ -217,7 +219,7 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
                 f"snapshot capability_fingerprint is not hexadecimal: {source}"
             ) from exc
         expected = _fingerprint(capabilities)
-        if stored_fingerprint.lower() != expected:
+        if stored_fingerprint != expected:
             raise SnapshotArtifactError(
                 f"snapshot capability_fingerprint does not match capabilities: {source}"
             )
