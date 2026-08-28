@@ -187,9 +187,7 @@ def _candidate_files(root: Path, limits: DiscoveryLimits) -> Iterator[Path]:
     if not root.is_dir():
         raise DiscoveryLimitError(f"scan path must be a regular file or directory: {root}")
 
-    entries = 0
-    for path in root.rglob("*"):
-        entries += 1
+    for entries, path in enumerate(root.rglob("*"), start=1):
         if entries > limits.max_entries:
             raise DiscoveryLimitError(
                 f"filesystem entry traversal exceeds limit {limits.max_entries}: {root}"
