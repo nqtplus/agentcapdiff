@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import UNIVERSAL_CAPABILITY_SCHEMA_VERSION, ScanResult
+from .outputio import atomic_write_text
 from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
 from .snapshotio import DEFAULT_SNAPSHOT_LIMITS, SnapshotLimits, load_snapshot
@@ -76,9 +77,9 @@ def snapshot_payload(result: ScanResult) -> dict[str, Any]:
 
 
 def write_snapshot(result: ScanResult, output: Path) -> None:
-    output.write_text(
+    atomic_write_text(
+        output,
         json.dumps(snapshot_payload(result), indent=2) + "\n",
-        encoding="utf-8",
     )
 
 
@@ -135,7 +136,7 @@ def _path_records(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     graph = snapshot.get("capability_graph")
     if not isinstance(graph, dict):
         return []
-    paths = graph.get("paths", [])
+    paths = graph.get("paths")
     if not isinstance(paths, list):
         return []
     return [item for item in paths if isinstance(item, dict) and item.get("id")]
@@ -146,17 +147,77 @@ def _policy_record(snapshot: dict[str, Any]) -> dict[str, Any] | None:
     return policy if isinstance(policy, dict) else None
 
 
-def _policy_semantics(policy: dict[str, Any]) -> dict[str, Any]:
-    semantic = dict(policy)
-    semantic.pop("sources", None)
-    return semantic
-
-
-def _policy_fingerprint(policy: dict[str, Any] | None) -> str:
+def _canonical_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
     if policy is None:
-        return ""
+        return {
+            "schema": 1,
+            "deny": [],
+            "require_review": [],
+            "max_risk_score": 60,
+            "allow_by_tool": {},
+            "scope_constraints": {},
+            "unknown_scope": "review",
+            "trust_boundaries": {},
+            "suppressions": [],
+        }
+    return {
+        "schema": int(policy.get("schema", 1)),
+        "deny": sorted(str(value) for value in policy.get("deny", [])),
+        "require_review": sorted(str(value) for value in policy.get("require_review", [])),
+        "max_risk_score": int(policy.get("max_risk_score", 60)),
+        "allow_by_tool": {
+            str(tool): sorted(str(value) for value in values)
+            for tool, values in sorted(policy.get("allow_by_tool", {}).items())
+        },
+        "scope_constraints": {
+            str(capability): {
+                "allowed_kinds": sorted(
+                    str(value) for value in constraint.get("allowed_kinds", [])
+                ),
+                "allowed_values": sorted(
+                    str(value) for value in constraint.get("allowed_values", [])
+                ),
+            }
+            for capability, constraint in sorted(policy.get("scope_constraints", {}).items())
+            if isinstance(constraint, dict)
+        },
+        "unknown_scope": str(policy.get("unknown_scope", "review")),
+        "trust_boundaries": {
+            str(tool): {
+                "boundary": str(annotation.get("boundary", "unknown")),
+                "trust": str(annotation.get("trust", "unknown")),
+                "note": str(annotation.get("note", "")),
+            }
+            for tool, annotation in sorted(policy.get("trust_boundaries", {}).items())
+            if isinstance(annotation, dict)
+        },
+        "suppressions": sorted(
+            (
+                {
+                    "rule_id": str(item.get("rule_id", "")),
+                    "capability": item.get("capability"),
+                    "tool": item.get("tool"),
+                    "reason": str(item.get("reason", "")),
+                    "expires": str(item.get("expires", "")),
+                }
+                for item in policy.get("suppressions", [])
+                if isinstance(item, dict)
+            ),
+            key=lambda item: (
+                str(item.get("rule_id", "")),
+                str(item.get("capability") or ""),
+                str(item.get("tool") or ""),
+                str(item.get("expires", "")),
+                str(item.get("reason", "")),
+            ),
+        ),
+    }
+
+
+def policy_fingerprint(policy: dict[str, Any] | None) -> str:
+    canonical = _canonical_policy(policy)
     encoded = json.dumps(
-        _policy_semantics(policy),
+        canonical,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
@@ -164,184 +225,155 @@ def _policy_fingerprint(policy: dict[str, Any] | None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _record_string_set(value: Any) -> set[str]:
-    if not isinstance(value, list):
-        return set()
-    return {str(item) for item in value}
+def _warning(kind: str, message: str, **details: Any) -> dict[str, Any]:
+    return {"kind": kind, "message": message, **details}
 
 
-def _record_mapping(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {}
-    return {str(key): item for key, item in value.items()}
+def _policy_weakening_warnings(
+    base_policy: dict[str, Any] | None,
+    head_policy: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if base_policy is None:
+        return []
+    base = _canonical_policy(base_policy)
+    head = _canonical_policy(head_policy)
+    warnings: list[dict[str, Any]] = []
 
-
-def _warning(kind: str, message: str) -> dict[str, str]:
-    return {"kind": kind, "message": message}
-
-
-def _allowlist_weakening(base: dict[str, Any], head: dict[str, Any]) -> list[dict[str, str]]:
-    warnings: list[dict[str, str]] = []
-    base_map = _record_mapping(base.get("allow_by_tool"))
-    head_map = _record_mapping(head.get("allow_by_tool"))
-    for tool, before_raw in sorted(base_map.items()):
-        before = _record_string_set(before_raw)
-        if tool not in head_map:
-            warnings.append(
-                _warning(
-                    "tool_allowlist_removed",
-                    f"Per-tool capability allowlist removed for {tool}.",
-                )
+    base_deny = set(base["deny"])
+    head_deny = set(head["deny"])
+    for capability in sorted(base_deny - head_deny):
+        warnings.append(
+            _warning(
+                "deny_removed",
+                f"Global deny removed for capability {capability}.",
+                capability=capability,
             )
-            continue
-        after = _record_string_set(head_map[tool])
-        for capability in sorted(after - before):
+        )
+
+    base_review = set(base["require_review"])
+    head_review = set(head["require_review"])
+    for capability in sorted(base_review - head_review):
+        warnings.append(
+            _warning(
+                "review_requirement_removed",
+                f"Review requirement removed for capability {capability}.",
+                capability=capability,
+            )
+        )
+
+    if int(head["max_risk_score"]) > int(base["max_risk_score"]):
+        warnings.append(
+            _warning(
+                "risk_threshold_raised",
+                "Maximum allowed risk score increased.",
+                before=base["max_risk_score"],
+                after=head["max_risk_score"],
+            )
+        )
+
+    scope_order = {"deny": 0, "review": 1, "ignore": 2}
+    if scope_order.get(str(head["unknown_scope"]), 1) > scope_order.get(
+        str(base["unknown_scope"]), 1
+    ):
+        warnings.append(
+            _warning(
+                "unknown_scope_weakened",
+                "Unknown-scope handling became less restrictive.",
+                before=base["unknown_scope"],
+                after=head["unknown_scope"],
+            )
+        )
+
+    base_allow = base["allow_by_tool"]
+    head_allow = head["allow_by_tool"]
+    for tool in sorted(set(base_allow) | set(head_allow)):
+        before = set(base_allow.get(tool, []))
+        after = set(head_allow.get(tool, []))
+        added = sorted(after - before)
+        if added:
             warnings.append(
                 _warning(
                     "tool_allowlist_expanded",
-                    f"Tool {tool} newly allows capability {capability}.",
+                    f"Per-tool allowlist expanded for {tool}: {', '.join(added)}.",
+                    tool=tool,
+                    capabilities=added,
                 )
             )
-    return warnings
 
-
-def _scope_constraint_weakening(
-    base: dict[str, Any], head: dict[str, Any]
-) -> list[dict[str, str]]:
-    warnings: list[dict[str, str]] = []
-    base_map = _record_mapping(base.get("scope_constraints"))
-    head_map = _record_mapping(head.get("scope_constraints"))
-    for capability, before_raw in sorted(base_map.items()):
-        if capability not in head_map:
+    base_constraints = base["scope_constraints"]
+    head_constraints = head["scope_constraints"]
+    for capability in sorted(set(base_constraints) | set(head_constraints)):
+        before = base_constraints.get(capability)
+        after = head_constraints.get(capability)
+        if before is None:
+            continue
+        if after is None:
             warnings.append(
                 _warning(
                     "scope_constraint_removed",
                     f"Scope constraint removed for capability {capability}.",
+                    capability=capability,
                 )
             )
             continue
-        before = _record_mapping(before_raw)
-        after = _record_mapping(head_map[capability])
-        before_kinds = _record_string_set(before.get("allowed_kinds"))
-        after_kinds = _record_string_set(after.get("allowed_kinds"))
-        for kind in sorted(after_kinds - before_kinds):
+        before_kinds = set(before.get("allowed_kinds", []))
+        after_kinds = set(after.get("allowed_kinds", []))
+        added_kinds = sorted(after_kinds - before_kinds)
+        if added_kinds:
             warnings.append(
                 _warning(
                     "scope_kind_expanded",
-                    f"Scope constraint for {capability} newly allows kind {kind}.",
+                    f"Allowed scope kinds expanded for {capability}: {', '.join(added_kinds)}.",
+                    capability=capability,
+                    values=added_kinds,
                 )
             )
-        before_values = _record_string_set(before.get("allowed_values"))
-        after_values = _record_string_set(after.get("allowed_values"))
-        if before_values and not after_values:
+        before_values = set(before.get("allowed_values", []))
+        after_values = set(after.get("allowed_values", []))
+        added_values = sorted(after_values - before_values)
+        if added_values:
             warnings.append(
                 _warning(
-                    "scope_values_unconstrained",
-                    f"Scope value allowlist removed for capability {capability}.",
+                    "scope_values_expanded",
+                    f"Allowed scope values expanded for {capability}: {', '.join(added_values)}.",
+                    capability=capability,
+                    values=added_values,
                 )
             )
-        elif before_values and after_values:
-            for value in sorted(after_values - before_values):
-                warnings.append(
-                    _warning(
-                        "scope_values_expanded",
-                        f"Scope constraint for {capability} newly allows value {value}.",
-                    )
-                )
-    return warnings
 
-
-def _suppression_key(item: dict[str, Any]) -> tuple[str, str, str]:
-    return (
-        str(item.get("rule_id", "")),
-        str(item.get("capability") or ""),
-        str(item.get("tool") or ""),
-    )
-
-
-def _suppression_weakening(base: dict[str, Any], head: dict[str, Any]) -> list[dict[str, str]]:
-    warnings: list[dict[str, str]] = []
-    base_items = [item for item in base.get("suppressions", []) if isinstance(item, dict)]
-    head_items = [item for item in head.get("suppressions", []) if isinstance(item, dict)]
-    base_by_key = {_suppression_key(item): item for item in base_items}
-    for item in head_items:
-        key = _suppression_key(item)
-        selector = "/".join(part or "*" for part in key)
-        before = base_by_key.get(key)
-        if before is None:
-            expiry = item.get("expires", "")
-            warnings.append(
-                _warning(
-                    "suppression_added",
-                    f"Temporary policy suppression added for {selector} until {expiry}.",
-                )
-            )
-            continue
-        if str(item.get("expires", "")) > str(before.get("expires", "")):
-            warnings.append(
-                _warning(
-                    "suppression_extended",
-                    f"Policy suppression for {selector} was extended to {item.get('expires', '')}.",
-                )
-            )
-    return warnings
-
-
-def _policy_weakening_warnings(
-    base: dict[str, Any] | None,
-    head: dict[str, Any] | None,
-) -> list[dict[str, str]]:
-    if base is None or head is None:
-        return []
-    warnings: list[dict[str, str]] = []
-
-    for capability in sorted(
-        _record_string_set(base.get("deny")) - _record_string_set(head.get("deny"))
-    ):
-        warnings.append(
-            _warning("deny_removed", f"Global deny removed for capability {capability}.")
+    base_suppressions = {
+        (
+            item["rule_id"],
+            item.get("capability"),
+            item.get("tool"),
+            item["expires"],
         )
-    for capability in sorted(
-        _record_string_set(base.get("require_review"))
-        - _record_string_set(head.get("require_review"))
-    ):
+        for item in base["suppressions"]
+    }
+    head_suppressions = {
+        (
+            item["rule_id"],
+            item.get("capability"),
+            item.get("tool"),
+            item["expires"],
+        )
+        for item in head["suppressions"]
+    }
+    for item in sorted(head_suppressions - base_suppressions, key=str):
+        rule_id, capability, tool, expires = item
         warnings.append(
             _warning(
-                "review_requirement_removed",
-                f"Human-review requirement removed for capability {capability}.",
+                "suppression_added",
+                "Temporary policy suppression added; review the exception and expiry.",
+                rule_id=rule_id,
+                capability=capability,
+                tool=tool,
+                expires=expires,
             )
         )
 
-    try:
-        base_risk = int(base.get("max_risk_score", 60))
-        head_risk = int(head.get("max_risk_score", 60))
-    except (TypeError, ValueError):
-        base_risk = head_risk = 60
-    if head_risk > base_risk:
-        warnings.append(
-            _warning(
-                "risk_threshold_raised",
-                f"Maximum allowed risk score increased from {base_risk} to {head_risk}.",
-            )
-        )
-
-    unknown_order = {"ignore": 0, "review": 1, "deny": 2}
-    before_unknown = str(base.get("unknown_scope", "review"))
-    after_unknown = str(head.get("unknown_scope", "review"))
-    if unknown_order.get(after_unknown, 1) < unknown_order.get(before_unknown, 1):
-        warnings.append(
-            _warning(
-                "unknown_scope_weakened",
-                f"Unknown-scope handling weakened from {before_unknown} to {after_unknown}.",
-            )
-        )
-
-    warnings.extend(_allowlist_weakening(base, head))
-    warnings.extend(_scope_constraint_weakening(base, head))
-    warnings.extend(_suppression_weakening(base, head))
-
-    base_boundaries = _record_mapping(base.get("trust_boundaries"))
-    head_boundaries = _record_mapping(head.get("trust_boundaries"))
+    base_boundaries = base["trust_boundaries"]
+    head_boundaries = head["trust_boundaries"]
     for tool in sorted(base_boundaries.keys() - head_boundaries.keys()):
         warnings.append(
             _warning(
@@ -373,33 +405,28 @@ def compare_snapshots(
     removed_path_ids = sorted(base_paths.keys() - head_paths.keys())
     base_policy = _policy_record(a)
     head_policy = _policy_record(b)
-    base_policy_fingerprint = _policy_fingerprint(base_policy)
-    head_policy_fingerprint = _policy_fingerprint(head_policy)
+    base_policy_fingerprint = policy_fingerprint(base_policy)
+    head_policy_fingerprint = policy_fingerprint(head_policy)
     return {
         "capabilities_added": sorted(bc - ac),
         "capabilities_removed": sorted(ac - bc),
         "tools_added": sorted(bt - at),
         "tools_removed": sorted(at - bt),
+        "base_risk_score": base_risk,
+        "head_risk_score": head_risk,
+        "risk_delta": head_risk - base_risk,
+        "head_max_severity": str(b.get("max_severity", "INFO")),
+        "head_findings": b.get("findings", []),
+        "base_capability_fingerprint": base_fingerprint,
+        "head_capability_fingerprint": head_fingerprint,
+        "fingerprint_changed": base_fingerprint != head_fingerprint,
         "scope_changes": scope_changes,
         "scope_expansions": scope_expansions,
         "paths_added": [head_paths[path_id] for path_id in added_path_ids],
         "paths_removed": [base_paths[path_id] for path_id in removed_path_ids],
-        "head_paths": [head_paths[path_id] for path_id in sorted(head_paths)],
-        "base_risk_score": base_risk,
-        "head_risk_score": head_risk,
-        "risk_delta": head_risk - base_risk,
-        "base_capability_fingerprint": base_fingerprint,
-        "head_capability_fingerprint": head_fingerprint,
-        "fingerprint_changed": base_fingerprint != head_fingerprint,
         "base_policy_fingerprint": base_policy_fingerprint,
         "head_policy_fingerprint": head_policy_fingerprint,
-        "policy_changed": bool(
-            base_policy_fingerprint
-            and head_policy_fingerprint
-            and base_policy_fingerprint != head_policy_fingerprint
-        ),
+        "policy_changed": base_policy_fingerprint != head_policy_fingerprint,
         "policy_weakening_warnings": _policy_weakening_warnings(base_policy, head_policy),
         "head_policy": head_policy,
-        "head_max_severity": str(b.get("max_severity", "INFO")),
-        "head_findings": list(b.get("findings", [])),
     }
