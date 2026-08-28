@@ -46,19 +46,19 @@ def test_attestation_contract_rejects_subject_glob(tmp_path: pathlib.Path):
         check_release_workflow(tmp_path)
 
 
-def test_attestation_contract_rejects_verification_after_publish(tmp_path: pathlib.Path):
+def test_attestation_contract_rejects_missing_prepublication_verifier(tmp_path: pathlib.Path):
     workflow_dir = tmp_path / ".github" / "workflows"
     workflow_dir.mkdir(parents=True)
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     release = release.replace(
         "python scripts/verify_release_attestations.py",
-        "# python scripts/verify_release_attestations.py",
+        "python scripts/verify_release_DISABLED.py",
         1,
     )
     (workflow_dir / "release.yml").write_text(release, encoding="utf-8")
     check_release_workflow = CHECKER["_check_release_workflow"]
 
-    with pytest.raises(ValueError, match="verification must complete before release publication"):
+    with pytest.raises(ValueError, match="missing required control"):
         check_release_workflow(tmp_path)
 
 
