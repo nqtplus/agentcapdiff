@@ -210,9 +210,13 @@ def _run_verification(command: list[str]) -> list[dict[str, Any]]:
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise ReleaseVerificationError("GitHub attestation verification returned invalid JSON") from exc
+        raise ReleaseVerificationError(
+            "GitHub attestation verification returned invalid JSON"
+        ) from exc
     if not isinstance(payload, list) or not payload:
-        raise ReleaseVerificationError("GitHub attestation verification returned no verified result")
+        raise ReleaseVerificationError(
+            "GitHub attestation verification returned no verified result"
+        )
     if not all(isinstance(item, dict) for item in payload):
         raise ReleaseVerificationError("GitHub attestation verification returned malformed results")
     return payload
