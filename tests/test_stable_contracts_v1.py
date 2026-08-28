@@ -12,6 +12,17 @@ from agentcapdiff.models import (
 )
 
 
+STABLE_JSON_SCAN_KEYS = {
+    "risk_score",
+    "max_severity",
+    "tools",
+    "capabilities",
+    "capability_graph",
+    "policy",
+    "findings",
+}
+
+
 def _result() -> ScanResult:
     tool = ToolRecord(
         name="fetch_url",
@@ -60,21 +71,21 @@ def test_universal_capability_schema_version_is_stable_for_v1():
     assert UNIVERSAL_CAPABILITY_SCHEMA_VERSION == "1"
 
 
-def test_json_scan_top_level_contract_is_stable():
+def test_json_scan_top_level_contract_is_stable_and_additive():
     payload = json.loads(json_report(_result()))
-    assert set(payload) == {
-        "risk_score",
-        "max_severity",
-        "tools",
-        "capabilities",
-        "capability_graph",
-        "policy",
-        "findings",
-    }
+    assert STABLE_JSON_SCAN_KEYS.issubset(payload)
     assert payload["tools"][0]["adapter"] == "mcp"
     assert payload["capabilities"][0]["schema_version"] == "1"
     assert payload["capabilities"][0]["scope"]["kind"] == "restricted"
     assert payload["findings"][0]["rule_id"] == "capability.denied"
+
+
+def test_v1_json_contract_allows_safe_additive_top_level_fields():
+    payload = json.loads(json_report(_result()))
+    payload["future_additive_metadata"] = {"ignored_by_older_consumer": True}
+
+    assert STABLE_JSON_SCAN_KEYS.issubset(payload)
+    assert payload["future_additive_metadata"]["ignored_by_older_consumer"] is True
 
 
 def test_sarif_contract_is_stable_and_source_anchored():
