@@ -2,13 +2,13 @@ import json
 
 from agentcapdiff.formats import json_report, sarif_report
 from agentcapdiff.models import (
-    UNIVERSAL_CAPABILITY_SCHEMA_VERSION,
     Capability,
     CapabilityEvidence,
     Finding,
     ScanResult,
     ScopeEvidence,
     ToolRecord,
+    UNIVERSAL_CAPABILITY_SCHEMA_VERSION,
 )
 
 
