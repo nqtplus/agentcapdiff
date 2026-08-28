@@ -25,7 +25,7 @@ The final merged `main` must then be re-read to verify the expected ROADMAP chec
 
 After the merged commit is selected for a production tag, the tag must be exactly `v<package-version>` and point to a commit on `main`. Repository release immutability must be enabled before a production release tag is published.
 
-The tag-triggered release workflow re-runs validation and CodeQL before publication. A production release is accepted only when GitHub reports `isImmutable=true`; otherwise the workflow fails closed and attempts to delete the mutable release/tag.
+The tag-triggered release workflow re-runs validation and CodeQL before publication. A production release is accepted only when GitHub reports `isImmutable=true`. If publication reaches a mutable/draft partial state, the workflow removes only a release state that carries AgentCapDiff's exact-source ownership marker and preserves the source tag for a safe retry; it never uses `--cleanup-tag` as automatic failure cleanup.
 
 The merge of v1.0 source state and the publication of an immutable GitHub Release are separate events: source state may be marked stable only after the PR release gate passes, while a production release asset/tag is trusted only after the tag workflow and immutable-release verification pass.
 
@@ -45,6 +45,23 @@ Both attestation steps consume `release/SHA256SUMS` via `subject-checksums`, so 
 Before `gh release create` runs, the publish job verifies the generated attestation bundles against the local wheel/source distribution and published SBOM. The verification must constrain repository `nqtplus/agentcapdiff`, signer workflow `nqtplus/agentcapdiff/.github/workflows/release.yml`, the exact release tag ref, exact source commit, signer workflow digest, GitHub Actions OIDC issuer, GitHub-hosted runner class, and exact predicate type. The verified artifact subject name/digest must match the checksum manifest; the SPDX predicate must equal the `agentcapdiff.spdx.json` asset to be published.
 
 The workflow starts with `permissions: {}` and grants only per-job permissions. Validation and CodeQL must finish successfully before the publish job receives write/attestation permissions.
+
+## Retry, partial failure, and idempotency
+
+Release publication is treated as a small transaction rather than a one-shot series of unrelated commands. Runs for the same tag are serialized with a GitHub Actions concurrency group and are not canceled by a later duplicate run. Different tags remain independent.
+
+A draft created by the workflow contains an exact-source marker of the form `<!-- agentcapdiff-release-source:<40-char-source-sha> -->`. Before mutating release state, a retry classifies any existing release for the tag:
+
+- no release: proceed normally;
+- workflow-owned draft or mutable partial release for the same source SHA: delete the release object only, preserve the tag, and rebuild/re-attest from the reviewed source;
+- workflow-owned immutable release for the same source SHA: treat the retry as an idempotent already-complete publication and skip mutating publication steps;
+- any release without the exact-source marker, or with a marker for a different source SHA: fail closed and do not delete or overwrite it.
+
+If draft creation succeeded but publication fails, an `always()` cleanup step re-reads the remote release state before deleting anything. It removes only workflow-owned draft/mutable partial state for the same exact source commit. If publication actually reached an immutable release before a later API/read failure, cleanup preserves it; the next retry recognizes the immutable release as already complete.
+
+A hard runner termination can still prevent in-run cleanup. The next serialized retry performs the same ownership/state reconciliation. Automatic failure handling never deletes the Git source tag, which keeps the reviewed source identity available for investigation and retry.
+
+These controls reduce duplicate-run, partial-response, and workflow-retry hazards; they do not make GitHub's release service transactional or eliminate races with privileged manual/API actors. Unowned/ambiguous remote state therefore remains fail-closed rather than being auto-deleted. See `docs/release-retry-transaction.md` for the detailed state machine.
 
 ## Consumer attestation verification
 
@@ -68,4 +85,4 @@ A reviewed verified immutable release tag may also be used where that release, c
 
 v0.9 established the supply-chain baseline carried into 1.x: exact Action/dependency pins, benchmark/release-integrity gates, SPDX SBOM, checksums, attestations, least-privilege workflow permissions, immutable release enforcement, and parser/path/output/CI trust-boundary review.
 
-See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, `docs/release-integrity.md` for the complete release trust model, and `docs/attestation-verification.md` for strict attestation verification and replay/misbinding resistance.
+See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, `docs/release-integrity.md` for the complete release trust model, `docs/attestation-verification.md` for strict attestation verification and replay/misbinding resistance, and `docs/release-retry-transaction.md` for release retry/idempotency behavior.
