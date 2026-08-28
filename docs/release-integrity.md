@@ -36,9 +36,24 @@ See `docs/attestation-verification.md` for the consumer verification contract an
 
 ## Immutable release rule
 
-Repository administrators must enable GitHub **release immutability** before publishing a production release. The workflow publishes from a draft and immediately checks GitHub's `isImmutable` release property. If GitHub does not report the release as immutable, the workflow fails closed and attempts to remove the mutable release and tag instead of leaving a release that users could mistake for trusted.
+Repository administrators must enable GitHub **release immutability** before publishing a production release. The workflow publishes from a draft and immediately checks GitHub's `isImmutable` release property. If GitHub does not report the release as immutable, the publish step fails closed; the cleanup step then re-reads remote state and removes only an exact-source workflow-owned draft/mutable release object. Automatic cleanup preserves the Git source tag.
 
 This repository-level setting is intentionally treated as external state: source code cannot turn it on by itself. A successful production release therefore requires both the reviewed workflow in this repository and GitHub reporting `isImmutable=true` after publication.
+
+## Retry, idempotency, and race boundary
+
+Runs for the same tag are serialized using a release-specific GitHub Actions concurrency group with `cancel-in-progress: false`. A duplicate/retried tag run waits instead of canceling a publisher between draft creation and immutable publication. Different tags remain independent.
+
+Drafts created by the workflow carry an exact-source marker tied to `GITHUB_SHA`. Before mutating release state, `scripts/release_transaction_state.py` performs bounded fail-closed classification of the exact tag and source marker:
+
+- no release → proceed;
+- exact-source workflow-owned draft/mutable partial state → delete the release object only, preserve the tag, and restart publication from a clean build;
+- exact-source workflow-owned immutable release → mark publication already complete and skip all mutating build/attestation/release steps;
+- missing/wrong-source marker or malformed/ambiguous state → fail closed and do not delete/overwrite.
+
+If draft creation reported success but publication failed, an `always()` cleanup step re-reads state before deleting anything. Exact-source draft/mutable partial state is removed; an immutable exact-source release is preserved because publication may have committed before a later API/read failure. A hard runner termination can still prevent in-run cleanup, so the next serialized retry performs the same reconciliation.
+
+The source marker is an ownership/idempotency discriminator, not a signature. GitHub Actions concurrency does not lock privileged maintainers, Apps, or direct API clients. Automatic deletion is therefore restricted to freshly re-read exact-source workflow-owned state; anything else remains fail-closed for manual investigation. See `docs/release-retry-transaction.md` for the complete state machine.
 
 ## Least-privilege workflow
 
@@ -50,7 +65,7 @@ The release workflow starts with `permissions: {}` and grants permissions per jo
 
 Every `actions/checkout` step in repository workflows explicitly sets `persist-credentials: false`. The checkout token is therefore not intentionally stored in repository Git configuration for later shell/build/test steps; checkout post-job cleanup is defense in depth rather than the primary credential-removal boundary. Release API operations that genuinely require write authority receive `${{ github.token }}` only as step-scoped `GH_TOKEN` environment input to the relevant `gh` commands.
 
-Publishing cannot begin until validation and CodeQL succeed. Validation runs the release-integrity checker, attestation-integrity checker, Ruff, the complete test suite, the reproducible safety benchmark, and AgentCapDiff's self-policy scan.
+Publishing cannot begin until validation and CodeQL succeed. Validation runs the release-integrity checker, attestation-integrity checker, release-transaction-integrity checker, Ruff, the complete test suite, the reproducible safety benchmark, and AgentCapDiff's self-policy scan.
 
 ## Dependency, Python, runner, and Action integrity
 
@@ -68,7 +83,7 @@ The setup-python Action itself is commit-SHA pinned, exact Python patches `3.11.
 
 Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed dependency version, closure, artifact hash, or Action SHA remains an explicit code-review event. Changes to the reviewed runner/Python/pip provenance file are likewise expected to be deliberate review events when the hosted environment moves.
 
-The `scripts/check_release_integrity.py` and `scripts/check_attestation_integrity.py` gates reject, among other things:
+The `scripts/check_release_integrity.py`, `scripts/check_attestation_integrity.py`, and `scripts/check_release_transaction_integrity.py` gates reject, among other things:
 
 - floating/non-SHA GitHub Action refs;
 - any `actions/checkout` step that does not explicitly set `persist-credentials: false`;
@@ -87,6 +102,10 @@ The `scripts/check_release_integrity.py` and `scripts/check_attestation_integrit
 - release attestations that are not sourced from the validated `SHA256SUMS` subject set;
 - removal or weakening of the pre-publication strict attestation verifier;
 - missing repository/signer/source/predicate/hosted-runner constraints in the verifier or consumer guidance;
+- missing same-tag release serialization or a regression to `cancel-in-progress: true`;
+- release publication mutations that bypass the idempotent already-published guard;
+- source-tag-destructive automatic cleanup such as `--cleanup-tag`;
+- deletion of remote release state without exact-source ownership/reclassification controls;
 - missing release/SBOM/immutability controls;
 - release workflows that omit clean artifact-directory reset, exact build output, validated checksum generation, or exact versioned publication paths;
 - broad `sha256sum dist/*` / `dist/* release/*` release patterns;
@@ -111,4 +130,4 @@ If a release, workflow credential, dependency pin/hash, Action pin, runner image
 5. ship the fix under a new version/tag after all release gates pass;
 6. direct users to a known-good full commit SHA or newer verified immutable release.
 
-If a mutable release was created accidentally, it is not a trusted production release. The v0.9 workflow is designed to delete it and fail rather than accept it.
+If a mutable release was created accidentally, it is not a trusted production release. Automatic cleanup may remove only exact-source workflow-owned release state and preserves the source tag; unowned or ambiguous state is left intact for investigation.
