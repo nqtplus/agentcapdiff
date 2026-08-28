@@ -7,6 +7,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
@@ -37,6 +41,8 @@ jobs:
         run: python scripts/check_release_integrity.py --release-tag "$GITHUB_REF_NAME"
       - name: Verify release attestation identity contract
         run: python scripts/check_attestation_integrity.py
+      - name: Verify release retry/idempotency transaction contract
+        run: python scripts/check_release_transaction_integrity.py
       - run: ruff check .
       - run: pytest --cov=agentcapdiff --cov-report=term-missing
       - name: Safety benchmark release gate
@@ -92,15 +98,60 @@ jobs:
             echo "::error::Enable GitHub release immutability before publishing a production tag."
             exit 1
           fi
+      - name: Reconcile release state for safe retry
+        id: release_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "already_published=false" >> "$GITHUB_OUTPUT"
+          releases="$(gh release list --limit 1000 --json tagName)"
+          presence="$(
+            printf '%s' "$releases" |
+              python scripts/release_transaction_state.py \
+                --mode exists \
+                --tag "$GITHUB_REF_NAME"
+          )"
+          if [[ "$presence" == "missing" ]]; then
+            exit 0
+          fi
+
+          current="$(
+            gh release view "$GITHUB_REF_NAME" \
+              --json tagName,isDraft,isImmutable,body
+          )"
+          state="$(
+            printf '%s' "$current" |
+              python scripts/release_transaction_state.py \
+                --mode classify \
+                --tag "$GITHUB_REF_NAME" \
+                --source-sha "$GITHUB_SHA"
+          )"
+          case "$state" in
+            immutable-owned)
+              echo "already_published=true" >> "$GITHUB_OUTPUT"
+              ;;
+            draft-owned|mutable-owned)
+              gh release delete "$GITHUB_REF_NAME" --yes
+              ;;
+            *)
+              echo "::error::Existing release is not owned by this exact source commit: $state"
+              exit 1
+              ;;
+          esac
       - name: Reset release artifact directories
+        if: steps.release_state.outputs.already_published != 'true'
         shell: bash
         run: |
           set -euo pipefail
           rm -rf -- dist release
           mkdir -- dist release
       - name: Build reviewed source and wheel artifacts
+        if: steps.release_state.outputs.already_published != 'true'
         run: python -m build --no-isolation --outdir dist
       - name: Generate validated SPDX SBOM and checksums
+        if: steps.release_state.outputs.already_published != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -110,17 +161,20 @@ jobs:
             --output release/agentcapdiff.spdx.json \
             --checksums-output release/SHA256SUMS
       - name: Attest build provenance from validated checksums
+        if: steps.release_state.outputs.already_published != 'true'
         id: attest_provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-checksums: release/SHA256SUMS
       - name: Attest SPDX SBOM from validated checksums
+        if: steps.release_state.outputs.already_published != 'true'
         id: attest_sbom
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-checksums: release/SHA256SUMS
           sbom-path: "release/agentcapdiff.spdx.json"
       - name: Verify signed subject, source, signer, and SBOM binding
+        if: steps.release_state.outputs.already_published != 'true'
         env:
           PROVENANCE_BUNDLE: ${{ steps.attest_provenance.outputs.bundle-path }}
           SBOM_BUNDLE: ${{ steps.attest_sbom.outputs.bundle-path }}
@@ -136,6 +190,8 @@ jobs:
             --provenance-bundle "$PROVENANCE_BUNDLE" \
             --sbom-bundle "$SBOM_BUNDLE"
       - name: Create draft release with exact validated assets
+        id: create_release
+        if: steps.release_state.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -150,8 +206,11 @@ jobs:
             --draft \
             --verify-tag \
             --title "$GITHUB_REF_NAME" \
+            --notes "<!-- agentcapdiff-release-source:${GITHUB_SHA} -->" \
             --generate-notes
       - name: Publish and require GitHub immutable release protection
+        id: publish_release
+        if: steps.release_state.outputs.already_published != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -161,6 +220,47 @@ jobs:
           immutable="$(gh release view "$GITHUB_REF_NAME" --json isImmutable --jq .isImmutable)"
           if [[ "$immutable" != "true" ]]; then
             echo "::error::GitHub did not mark the published release immutable."
-            gh release delete "$GITHUB_REF_NAME" --cleanup-tag --yes
             exit 1
           fi
+      - name: Cleanup partial release while preserving source tag
+        id: cleanup_release
+        if: ${{ always() && steps.release_state.outputs.already_published != 'true' && steps.create_release.outcome == 'success' && steps.publish_release.outcome != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          releases="$(gh release list --limit 1000 --json tagName)"
+          presence="$(
+            printf '%s' "$releases" |
+              python scripts/release_transaction_state.py \
+                --mode exists \
+                --tag "$GITHUB_REF_NAME"
+          )"
+          if [[ "$presence" == "missing" ]]; then
+            exit 0
+          fi
+
+          current="$(
+            gh release view "$GITHUB_REF_NAME" \
+              --json tagName,isDraft,isImmutable,body
+          )"
+          state="$(
+            printf '%s' "$current" |
+              python scripts/release_transaction_state.py \
+                --mode classify \
+                --tag "$GITHUB_REF_NAME" \
+                --source-sha "$GITHUB_SHA"
+          )"
+          case "$state" in
+            draft-owned|mutable-owned)
+              gh release delete "$GITHUB_REF_NAME" --yes
+              ;;
+            immutable-owned)
+              echo "Immutable release already committed; preserving it."
+              ;;
+            *)
+              echo "::error::Refusing to delete release state not owned by this source: $state"
+              exit 1
+              ;;
+          esac
