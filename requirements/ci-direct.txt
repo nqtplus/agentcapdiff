@@ -1,5 +1,5 @@
-# Reviewed direct dependencies for CI/release reproducibility.
-# Transitive resolution is still performed by pip; Dependabot reviews direct updates.
+# Reviewed direct dependencies for CI/release maintenance.
+# Workflows MUST install requirements/ci-lock.txt, which freezes the full dependency closure.
 PyYAML==6.0.3
 build==1.5.0
 hatchling==1.32.0

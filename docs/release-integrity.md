@@ -50,7 +50,13 @@ Publishing cannot begin until validation and CodeQL succeed. Validation runs the
 
 All external GitHub Actions under `.github/workflows/` are pinned to full 40-character commit SHAs. Human-readable major-version comments are informational only and are not execution references.
 
-Direct CI/release Python dependencies are reviewed exact pins in `requirements/ci-direct.txt`. The package build backend and declared runtime dependency are also exact-pinned for this release line. Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed SHA/version remains an explicit code-review event.
+`requirements/ci-direct.txt` records the reviewed direct CI/release dependencies. `requirements/ci-lock.txt` is the actual install source and freezes the complete currently required dependency closure, including transitive packages observed by the Python 3.11–3.13 CI matrix. Every lock entry is an exact `name==version` pin and every direct pin must appear at the same version in the lock.
+
+CI/release workflows install the lock with `--no-deps`, so pip cannot silently resolve a different transitive dependency set. They also use `--no-cache-dir` and do not enable the setup-python pip cache, removing mutable cross-run package-cache state from this trust boundary. `--only-binary=:all:` rejects source-distribution fallback during dependency installation, and `python -m pip check` fails if the frozen closure is incomplete or incompatible on any supported Python version.
+
+The lock freezes package versions and removes resolver/cache drift. It does not currently pin package artifact SHA-256 values, the bundled pip executable, the GitHub-hosted runner image, or the external package index itself. Those remain explicit residual supply-chain dependencies rather than being described as cryptographically reproducible inputs.
+
+Dependabot opens weekly update PRs for both Python and GitHub Actions so moving to a new reviewed dependency version, closure, or Action SHA remains an explicit code-review event.
 
 The `scripts/check_release_integrity.py` gate rejects:
 
@@ -58,7 +64,11 @@ The `scripts/check_release_integrity.py` gate rejects:
 - any `actions/checkout` step that does not explicitly set `persist-credentials: false`;
 - `pull_request_target` workflows;
 - `write-all` permissions;
-- unpinned build dependencies or direct CI dependencies;
+- non-exact, remote, conditional, duplicate, or direct/lock-mismatched CI dependency pins;
+- a lock that does not extend beyond the direct dependency set;
+- workflow use of `requirements/ci-direct.txt` as an install source;
+- setup-python pip caching for locked CI/release dependency installs;
+- locked installs that omit `--no-deps`, `--no-cache-dir`, `--only-binary=:all:`, or a matching `pip check`;
 - missing Dependabot coverage;
 - missing release/SBOM/immutability controls;
 - release workflows that omit clean artifact-directory reset, exact build output, validated checksum generation, or exact versioned publication paths;

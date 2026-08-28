@@ -14,7 +14,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
-      - run: python -m pip install -r requirements/ci-direct.txt
+      - run: "python -m pip install --no-deps --no-cache-dir --only-binary=:all: -r requirements/ci-lock.txt"
+      - run: python -m pip check
       - run: python -m pip install . --no-deps --no-build-isolation
       - name: Snapshot base and head
         shell: bash
