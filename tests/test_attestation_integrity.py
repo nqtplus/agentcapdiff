@@ -42,7 +42,7 @@ def test_attestation_contract_rejects_subject_glob(tmp_path: pathlib.Path):
     (workflow_dir / "release.yml").write_text(release, encoding="utf-8")
     check_release_workflow = CHECKER["_check_release_workflow"]
 
-    with pytest.raises(ValueError, match="subject-checksums|subject-path"):
+    with pytest.raises(ValueError, match="bind both provenance and SBOM attestations"):
         check_release_workflow(tmp_path)
 
 
