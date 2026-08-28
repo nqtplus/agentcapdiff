@@ -29,6 +29,7 @@ def _load_config() -> dict[str, object]:
         "os_version",
         "ambient_python",
         "ambient_pip",
+        "setup_pip",
         "setup_python_versions",
     )
     for key in required:
@@ -47,7 +48,10 @@ def _os_release() -> dict[str, str]:
     return values
 
 
-def check(expected_python: str | None = None, expected_pip: str | None = None) -> dict[str, str]:
+def check(
+    expected_python: str | None = None,
+    expected_pip: str | None = None,
+) -> dict[str, str]:
     config = _load_config()
     expected_env = {
         "GITHUB_ACTIONS": "true",
@@ -57,10 +61,12 @@ def check(expected_python: str | None = None, expected_pip: str | None = None) -
         "ImageOS": str(config["image_os"]),
         "ImageVersion": str(config["image_version"]),
     }
+    observed_env: dict[str, str] = {}
     for name, expected in expected_env.items():
         actual = os.environ.get(name)
         if actual != expected:
             _fail(f"{name} provenance mismatch: expected {expected!r}, got {actual!r}")
+        observed_env[name] = actual
 
     release = _os_release()
     if release.get("ID") != config["os_id"]:
@@ -78,17 +84,16 @@ def check(expected_python: str | None = None, expected_pip: str | None = None) -
     if expected_pip is not None and pip_version != expected_pip:
         _fail(f"pip version mismatch: expected {expected_pip}, got {pip_version}")
 
-    evidence = {
-        "runner_environment": os.environ["RUNNER_ENVIRONMENT"],
-        "runner_os": os.environ["RUNNER_OS"],
-        "runner_arch": os.environ["RUNNER_ARCH"],
-        "image_os": os.environ["ImageOS"],
-        "image_version": os.environ["ImageVersion"],
+    return {
+        "runner_environment": observed_env["RUNNER_ENVIRONMENT"],
+        "runner_os": observed_env["RUNNER_OS"],
+        "runner_arch": observed_env["RUNNER_ARCH"],
+        "image_os": observed_env["ImageOS"],
+        "image_version": observed_env["ImageVersion"],
         "os_version": release["VERSION_ID"],
         "python": python_version,
         "pip": pip_version,
     }
-    return evidence
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -98,7 +103,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         evidence = check(args.python_version, args.pip_version)
-    except (OSError, ValueError, json.JSONDecodeError, importlib.metadata.PackageNotFoundError) as exc:
+    except (
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+        importlib.metadata.PackageNotFoundError,
+    ) as exc:
         print(f"ci-environment: FAIL: {exc}", file=sys.stderr)
         return 1
     print("ci-environment: PASS " + json.dumps(evidence, sort_keys=True))
