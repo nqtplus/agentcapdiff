@@ -65,6 +65,14 @@ def _scan_or_report_error(path: Path, policy: Path | None):
         return None
 
 
+def _diff_or_report_error(base: Path, head: Path):
+    try:
+        return compare_snapshots(base, head)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"agentcapdiff: unsafe or invalid snapshot input: {exc}", file=sys.stderr)
+        return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "scan":
@@ -93,7 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "diff":
-        diff = compare_snapshots(Path(args.base), Path(args.head))
+        diff = _diff_or_report_error(Path(args.base), Path(args.head))
+        if diff is None:
+            return 3
         if args.format == "markdown":
             report = markdown_diff_report(diff)
         else:
