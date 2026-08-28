@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python scripts/check_ci_environment.py --python-version "${{ matrix.python-version }}"
+      - run: python scripts/check_ci_environment.py --python-version "${{ matrix.python-version }}" --pip-version "26.2.1"
       - run: "python -m pip --isolated --disable-pip-version-check install --require-hashes --no-deps --no-cache-dir --only-binary=:all: --index-url=https://pypi.org/simple -r requirements/ci-lock.txt"
       - run: python -m pip check
       - run: python -m pip install . --no-deps --no-build-isolation
