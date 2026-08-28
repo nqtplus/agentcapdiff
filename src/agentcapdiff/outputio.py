@@ -4,6 +4,7 @@ import errno
 import os
 import stat
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 
@@ -116,10 +117,8 @@ def _atomic_write_posix(path: Path, payload: bytes) -> None:
         if temp_fd is not None:
             os.close(temp_fd)
         if temp_name is not None:
-            try:
+            with suppress(FileNotFoundError):
                 os.unlink(temp_name, dir_fd=parent_fd)
-            except FileNotFoundError:
-                pass
         os.close(parent_fd)
 
 
@@ -173,10 +172,8 @@ def _atomic_write_portable(path: Path, payload: bytes) -> None:
     finally:
         if temp_fd >= 0:
             os.close(temp_fd)
-        try:
+        with suppress(FileNotFoundError):
             temp_path.unlink()
-        except FileNotFoundError:
-            pass
 
 
 def atomic_write_text(path: Path, text: str) -> None:
