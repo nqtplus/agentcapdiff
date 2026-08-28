@@ -7,10 +7,13 @@ import sys
 
 import pytest
 
+from scripts import check_release_integrity
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 VERSION = "1.0.0"
 WHEEL = f"agentcapdiff-{VERSION}-py3-none-any.whl"
 SDIST = f"agentcapdiff-{VERSION}.tar.gz"
+CHECKOUT_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
 
 
 def _run_generator(
@@ -60,6 +63,23 @@ def test_release_integrity_contract_passes_for_repository():
     )
     assert result.returncode == 0, result.stderr
     assert "release-integrity: PASS" in result.stdout
+
+
+def test_release_integrity_rejects_checkout_credential_persistence(tmp_path: pathlib.Path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    workflow = workflow_dir / "unsafe.yml"
+    workflow.write_text(
+        "name: unsafe\n"
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        f"      - uses: actions/checkout@{CHECKOUT_SHA}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="persist-credentials: false"):
+        check_release_integrity._check_workflow_action_pins(tmp_path)
 
 
 def test_spdx_and_checksums_are_reproducible_for_same_exact_artifacts(
