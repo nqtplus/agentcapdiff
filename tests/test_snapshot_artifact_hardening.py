@@ -78,6 +78,26 @@ def test_snapshot_rejects_malformed_stable_fields(tmp_path: Path) -> None:
         compare_snapshots(base, head)
 
 
+def test_snapshot_rejects_malformed_nested_records(tmp_path: Path) -> None:
+    base = tmp_path / "base.json"
+    head = tmp_path / "head.json"
+    _write_snapshot(
+        base,
+        scopes=[
+            {
+                "capability": "network.external",
+                "tool": "fetch",
+                "kind": "restricted",
+                "values": {"api.example.com": True},
+            }
+        ],
+    )
+    _write_snapshot(head)
+
+    with pytest.raises(SnapshotArtifactError, match="scopes.values must be a list of strings"):
+        compare_snapshots(base, head)
+
+
 def test_snapshot_rejects_inconsistent_capability_fingerprint(tmp_path: Path) -> None:
     base = tmp_path / "base.json"
     head = tmp_path / "head.json"
