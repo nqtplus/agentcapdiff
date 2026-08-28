@@ -48,12 +48,16 @@ def test_rejects_excessive_nesting(tmp_path: Path):
         discover_tools(tmp_path, DiscoveryLimits(max_depth=5))
 
 
-def test_parser_recursion_is_reported_as_limit_error(tmp_path: Path):
-    path = tmp_path / "parser-deep.json"
-    path.write_text("[" * 5_000 + "0" + "]" * 5_000, encoding="utf-8")
+def test_parser_recursion_is_reported_as_limit_error(tmp_path: Path, monkeypatch):
+    path = tmp_path / "parser-recursion.json"
+    path.write_text("{}", encoding="utf-8")
 
+    def raise_recursion(_text: str):
+        raise RecursionError("simulated parser recursion")
+
+    monkeypatch.setattr("agentcapdiff.discovery.json.loads", raise_recursion)
     with pytest.raises(DiscoveryLimitError, match="parser recursion exceeds safety limit"):
-        discover_tools(tmp_path, DiscoveryLimits(max_depth=10_000))
+        discover_tools(path)
 
 
 def test_rejects_total_input_budget(tmp_path: Path):
