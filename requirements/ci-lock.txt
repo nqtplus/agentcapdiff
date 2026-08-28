@@ -1,18 +1,38 @@
-# Reviewed full dependency closure for AgentCapDiff CI/release on Ubuntu, Python 3.11-3.13.
-# Direct requirements remain documented in ci-direct.txt; this lock is the install source.
-# Every entry is exact. Workflows install with --no-deps so pip cannot resolve hidden transitives.
-PyYAML==6.0.3
-build==1.5.0
-coverage==7.15.4
-hatchling==1.32.0
-iniconfig==2.3.0
-packaging==26.3
-pathspec==1.1.1
-pluggy==1.6.0
-Pygments==2.21.0
-pyproject_hooks==1.2.0
-pytest==9.1.1
-pytest-cov==7.1.0
-ruff==0.16.4
-tomlkit==0.15.1
-trove-classifiers==2026.6.1.19
+# Reviewed wheel-only dependency closure for AgentCapDiff CI/release on Ubuntu 24.04 x86_64.
+# Direct requirements remain documented in ci-direct.txt; this file is the install source.
+# Every accepted artifact is SHA-256 pinned. Compiled packages list only the CPython 3.11-3.13
+# manylinux x86_64 wheels used by the supported CI matrix; source distributions are not accepted.
+PyYAML==6.0.3 \
+  --hash=sha256:b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d \
+  --hash=sha256:ba1cc08a7ccde2d2ec775841541641e4548226580ab850948cbfda66a1befcdc \
+  --hash=sha256:0f29edc409a6392443abf94b9cf89ce99889a1dd5376d94316ae5145dfedd5d6
+build==1.5.0 \
+  --hash=sha256:13f3eecb844759ab66efec90ca17639bbf14dc06cb2fdf37a9010322d9c50a6f
+coverage==7.15.4 \
+  --hash=sha256:7a2b580774a4786c1053157c0165e04476e03ff293993d7c148eee784a94bae6 \
+  --hash=sha256:899b9da30f3c6c336566e3707495bb23e8302d39d862f01fa78c48b99b9437e2 \
+  --hash=sha256:12b59c90084e3234fb11184886bf4a40f4f16a8c8f867be2e087b81f8e8868d4
+hatchling==1.32.0 \
+  --hash=sha256:0e17c9c3b9aa7c625acc8d0f5b622f107d5049af9ecf5ada4de1aada5be7cdbc
+iniconfig==2.3.0 \
+  --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
+packaging==26.3 \
+  --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pathspec==1.1.1 \
+  --hash=sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189
+pluggy==1.6.0 \
+  --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+Pygments==2.21.0 \
+  --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
+pyproject_hooks==1.2.0 \
+  --hash=sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913
+pytest==9.1.1 \
+  --hash=sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c
+pytest-cov==7.1.0 \
+  --hash=sha256:a0461110b7865f9a271aa1b51e516c9a95de9d696734a2f71e3e78f46e1d4678
+ruff==0.16.4 \
+  --hash=sha256:f2d812e482f5a7e02eee26cd73d2a37ebbdf47d795ea63ba1b89110ae93e9fb3
+tomlkit==0.15.1 \
+  --hash=sha256:177a05aece5a8ca5266fd3c448abb47b8d352f09d477d3ca8332db4d89b24304
+trove-classifiers==2026.6.1.19 \
+  --hash=sha256:ab4c4ec93cc4a4e7815fa759906e05e6bb3f2fbd92ea0f897288c6a43efd15b3

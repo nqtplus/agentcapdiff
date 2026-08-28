@@ -10,11 +10,12 @@ permissions:
 
 jobs:
   state:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - run: python3 scripts/check_ci_environment.py --python-version "3.12.3" --pip-version "24.0"
       - name: Verify roadmap and version metadata
         shell: python
         run: |
