@@ -26,6 +26,8 @@ jobs:
         run: python scripts/check_release_integrity.py
       - name: Verify attestation identity/binding invariants
         run: python scripts/check_attestation_integrity.py
+      - name: Verify release retry/idempotency invariants
+        run: python scripts/check_release_transaction_integrity.py
       - name: Build release artifacts without floating build dependencies
         run: python -m build --no-isolation
       - name: Generate and validate SPDX SBOM
