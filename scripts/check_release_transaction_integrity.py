@@ -23,12 +23,8 @@ def _step_block(text: str, name: str) -> str:
     if start < 0:
         raise ReleaseTransactionIntegrityError(f"release workflow missing step: {name}")
     tail = text[start + len(marker) :]
-    candidates = [
-        index
-        for token in ("\n      - name:", "\n      - uses:", "\n  ")
-        if (index := tail.find(token)) >= 0
-    ]
-    end = min(candidates) if candidates else len(tail)
+    next_step = tail.find("\n      - ")
+    end = next_step if next_step >= 0 else len(tail)
     return marker + tail[:end]
 
 
