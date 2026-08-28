@@ -1,4 +1,3 @@
-import json
 import pathlib
 import runpy
 import subprocess
@@ -144,7 +143,7 @@ def test_release_classification_rejects_impossible_draft_immutable_state():
         classify(_release(draft=True, immutable=True), TAG, SOURCE)
 
 
-def test_release_state_cli_fails_closed_on_malformed_json(monkeypatch: pytest.MonkeyPatch):
+def test_release_state_cli_fails_closed_on_malformed_json():
     script = ROOT / "scripts" / "release_transaction_state.py"
     result = subprocess.run(
         [sys.executable, str(script), "--mode", "exists", "--tag", TAG],
