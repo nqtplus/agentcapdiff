@@ -50,6 +50,8 @@ SARIF output remains SARIF `2.1.0`, with one AgentCapDiff driver run. Findings r
 
 Existing snapshot schema/fingerprint fields remain backward-readable. Machine-readable diffs continue to expose capability/tool additions/removals, risk delta, scope changes/expansions, capability-path changes, policy-change state, and policy-weakening warnings where the corresponding evidence exists.
 
+Snapshot files supplied to `diff` are treated as untrusted artifacts. Valid legacy snapshots that omit newer fields remain readable, and additive unknown top-level fields remain ignorable within the 1.x contract. Malformed, unsupported-schema, inconsistent-fingerprint, symlinked, excessively large, or excessively complex snapshot artifacts fail closed rather than being coerced into a potentially misleading diff.
+
 ## Framework conformance
 
 The stable static adapter contract covers serialized metadata for MCP, OpenAI API tools, OpenAI Agents SDK, Claude tools, LangChain/LangGraph-compatible metadata, and CrewAI-style metadata. CI conformance tests verify equivalent filesystem/network privileges normalize consistently, dynamic scope remains unknown, and changing framework representation cannot weaken an explicit deny decision.
