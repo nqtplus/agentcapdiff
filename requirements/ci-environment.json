@@ -9,6 +9,7 @@
   "os_version": "24.04",
   "ambient_python": "3.12.3",
   "ambient_pip": "24.0",
+  "setup_pip": "26.2.1",
   "setup_python_versions": [
     "3.11.16",
     "3.12.14",
