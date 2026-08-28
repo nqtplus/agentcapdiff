@@ -158,7 +158,7 @@ def test_release_generator_rejects_symlinked_output_parent(tmp_path: pathlib.Pat
     result = _run_generator(dist, redirected / "agentcapdiff.spdx.json")
 
     assert result.returncode == 1
-    assert "must not traverse symlinks" in result.stderr
+    assert "release output directory" in result.stderr
     assert list(real_release.iterdir()) == []
 
 
