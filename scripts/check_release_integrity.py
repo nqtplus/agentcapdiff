@@ -11,6 +11,11 @@ USES_RE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
 CHECKOUT_RE = re.compile(r"^(?P<indent>\s*)-\s+uses:\s*actions/checkout@([^\s#]+)")
 PERSIST_FALSE_RE = re.compile(r"^\s*persist-credentials:\s*false\s*(?:#.*)?$", re.IGNORECASE)
 VERSION_RE = re.compile(r'^__version__\s*=\s*"([^"]+)"$', re.MULTILINE)
+PIN_RE = re.compile(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>[^\s;]+)$")
+LOCK_INSTALL = (
+    "python -m pip install --no-deps --no-cache-dir --only-binary=:all: "
+    "-r requirements/ci-lock.txt"
+)
 
 
 def _fail(message: str) -> None:
@@ -21,6 +26,31 @@ def _read(path: Path) -> str:
     if not path.is_file():
         _fail(f"required release-integrity file missing: {path.as_posix()}")
     return path.read_text(encoding="utf-8")
+
+
+def _normalize_package_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _parse_exact_pins(path: Path, label: str) -> dict[str, str]:
+    pins: dict[str, str] = {}
+    for line_number, raw in enumerate(_read(path).splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if " @ " in line or "://" in line or line.startswith("git+") or ";" in line:
+            _fail(f"{label} contains non-local or conditional requirement at line {line_number}")
+        match = PIN_RE.fullmatch(line)
+        if match is None:
+            _fail(f"{label} requirement is not an exact package pin at line {line_number}: {line}")
+        name = _normalize_package_name(match.group("name"))
+        version = match.group("version")
+        if name in pins:
+            _fail(f"{label} contains duplicate package pin: {name}")
+        pins[name] = version
+    if not pins:
+        _fail(f"{label} has no package pins")
+    return pins
 
 
 def _project_version(root: Path) -> str:
@@ -131,25 +161,49 @@ def _check_workflow_action_pins(root: Path) -> None:
                 )
 
 
+def _check_dependency_lock(root: Path) -> None:
+    direct = _parse_exact_pins(root / "requirements" / "ci-direct.txt", "CI direct pins")
+    locked = _parse_exact_pins(root / "requirements" / "ci-lock.txt", "CI dependency lock")
+    for name, version in direct.items():
+        if locked.get(name) != version:
+            _fail(f"CI dependency lock must contain direct pin {name}=={version}")
+    if len(locked) <= len(direct):
+        _fail("CI dependency lock must freeze the transitive closure, not only direct pins")
+
+
+def _check_dependency_workflow_contract(root: Path) -> None:
+    workflow_dir = root / ".github" / "workflows"
+    for workflow in sorted(workflow_dir.glob("*.y*ml")):
+        text = _read(workflow)
+        if "cache: pip" in text:
+            _fail(f"pip cache is forbidden for locked CI/release installs: {workflow.name}")
+        if "requirements/ci-direct.txt" in text:
+            _fail(f"workflow must install the full dependency lock, not direct pins: {workflow.name}")
+        install_count = text.count(LOCK_INSTALL)
+        check_count = text.count("python -m pip check")
+        if install_count != check_count:
+            _fail(
+                f"each locked dependency install must be followed by a pip check in {workflow.name}"
+            )
+        needs_dependencies = any(
+            fragment in text
+            for fragment in (
+                "python -m pip install . --no-deps --no-build-isolation",
+                "python -m build --no-isolation",
+            )
+        )
+        if needs_dependencies and install_count == 0:
+            _fail(f"workflow uses Python build/runtime tooling without locked dependencies: {workflow.name}")
+
+
 def _check_dependency_maintenance(root: Path) -> None:
     dependabot = _read(root / ".github" / "dependabot.yml")
     if 'package-ecosystem: "pip"' not in dependabot:
         _fail("Dependabot pip updates are not configured")
     if 'package-ecosystem: "github-actions"' not in dependabot:
         _fail("Dependabot GitHub Actions updates are not configured")
-
-    pins = _read(root / "requirements" / "ci-direct.txt")
-    entries = [
-        line.strip()
-        for line in pins.splitlines()
-        if line.strip() and not line.startswith("#")
-    ]
-    if not entries:
-        _fail("requirements/ci-direct.txt has no dependency pins")
-    for entry in entries:
-        unsafe = " @ " in entry or "://" in entry or entry.startswith("git+")
-        if "==" not in entry or unsafe:
-            _fail(f"CI direct dependency is not a reviewed exact package pin: {entry}")
+    _check_dependency_lock(root)
+    _check_dependency_workflow_contract(root)
 
 
 def _check_release_workflow(root: Path) -> None:
