@@ -86,6 +86,54 @@ def test_release_integrity_rejects_checkout_credential_persistence(tmp_path: pat
         check_workflow_action_pins(tmp_path)
 
 
+def test_dependency_lock_rejects_non_exact_transitive_pin(tmp_path: pathlib.Path):
+    requirements = tmp_path / "requirements"
+    requirements.mkdir()
+    (requirements / "ci-direct.txt").write_text("pytest==9.1.1\n", encoding="utf-8")
+    (requirements / "ci-lock.txt").write_text(
+        "pytest==9.1.1\npluggy>=1.6.0\n",
+        encoding="utf-8",
+    )
+    check_dependency_lock = CHECK_RELEASE_INTEGRITY["_check_dependency_lock"]
+
+    with pytest.raises(ValueError, match="not an exact package pin"):
+        check_dependency_lock(tmp_path)
+
+
+def test_dependency_lock_rejects_direct_version_mismatch(tmp_path: pathlib.Path):
+    requirements = tmp_path / "requirements"
+    requirements.mkdir()
+    (requirements / "ci-direct.txt").write_text("pytest==9.1.1\n", encoding="utf-8")
+    (requirements / "ci-lock.txt").write_text(
+        "pytest==9.1.0\npluggy==1.6.0\n",
+        encoding="utf-8",
+    )
+    check_dependency_lock = CHECK_RELEASE_INTEGRITY["_check_dependency_lock"]
+
+    with pytest.raises(ValueError, match="must contain direct pin pytest==9.1.1"):
+        check_dependency_lock(tmp_path)
+
+
+def test_dependency_workflow_contract_rejects_pip_cache(tmp_path: pathlib.Path):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "unsafe.yml").write_text(
+        "jobs:\n"
+        "  test:\n"
+        "    steps:\n"
+        "      - uses: actions/setup-python@0123456789012345678901234567890123456789\n"
+        "        with:\n"
+        "          cache: pip\n",
+        encoding="utf-8",
+    )
+    check_dependency_workflow_contract = CHECK_RELEASE_INTEGRITY[
+        "_check_dependency_workflow_contract"
+    ]
+
+    with pytest.raises(ValueError, match="pip cache is forbidden"):
+        check_dependency_workflow_contract(tmp_path)
+
+
 def test_spdx_and_checksums_are_reproducible_for_same_exact_artifacts(
     tmp_path: pathlib.Path,
 ):
