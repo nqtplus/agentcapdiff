@@ -27,5 +27,7 @@ jobs:
       - name: Safety benchmark regression gate
         run: python -m agentcapdiff.benchmark --output benchmark-summary.json
       - name: Release integrity regression gate
-        run: python scripts/check_release_integrity.py
+        run: |
+          python scripts/check_release_integrity.py
+          python scripts/check_release_transaction_integrity.py
       - run: agentcapdiff scan examples --policy agentcapdiff.yaml --fail-on never
