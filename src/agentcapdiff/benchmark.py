@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from .discovery import DiscoveryLimitError
+from .outputio import OutputWriteError, atomic_write_text
 from .scanner import scan
 
 HIGH_RISK_CAPABILITIES = {
@@ -129,7 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     summary = run_benchmark(Path(args.manifest))
-    Path(args.output).write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    try:
+        atomic_write_text(Path(args.output), json.dumps(summary, indent=2) + "\n")
+    except OutputWriteError as exc:
+        print(f"benchmark gate: unsafe or invalid output path: {exc}", file=sys.stderr)
+        return 1
     baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
     failures = compare_baseline(summary, baseline)
     print(json.dumps(summary["metrics"], sort_keys=True))
