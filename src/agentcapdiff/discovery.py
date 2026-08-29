@@ -196,6 +196,40 @@ def _candidate_files(root: Path, limits: DiscoveryLimits) -> Iterator[Path]:
             yield path
 
 
+def _merge_tool_records(records: list[ToolRecord]) -> ToolRecord:
+    if len(records) == 1:
+        return records[0]
+
+    descriptions = sorted({record.description for record in records if record.description})
+    adapters = {record.adapter or "generic" for record in records}
+    schemas: list[dict[str, Any]] = []
+    seen_schema_ids: set[int] = set()
+    for record in records:
+        schema = record.input_schema
+        if schema is None or id(schema) in seen_schema_ids:
+            continue
+        seen_schema_ids.add(id(schema))
+        schemas.append(schema)
+
+    if not schemas:
+        merged_schema = None
+    elif len(schemas) == 1:
+        merged_schema = schemas[0]
+    else:
+        # Preserve every static schema branch rather than letting traversal order choose a winner.
+        # Scope/capability inference already traverses nested schema containers conservatively.
+        merged_schema = {"allOf": schemas}
+
+    adapter = next(iter(adapters)) if len(adapters) == 1 else "generic"
+    return ToolRecord(
+        name=records[0].name,
+        description=" | ".join(descriptions),
+        source=records[0].source,
+        input_schema=merged_schema,
+        adapter=adapter,
+    )
+
+
 def discover_tools(
     root: Path,
     limits: DiscoveryLimits = DEFAULT_LIMITS,
@@ -242,7 +276,8 @@ def discover_tools(
 
         _walk(data, str(path), found, limits)
 
-    dedup: dict[tuple[str, str], ToolRecord] = {}
+    grouped: dict[tuple[str, str], list[ToolRecord]] = {}
     for tool in found:
-        dedup[(tool.name, tool.source)] = tool
-    return sorted(dedup.values(), key=lambda x: (x.name.lower(), x.source))
+        grouped.setdefault((tool.name, tool.source), []).append(tool)
+    merged = [_merge_tool_records(records) for records in grouped.values()]
+    return sorted(merged, key=lambda x: (x.name.lower(), x.source))
