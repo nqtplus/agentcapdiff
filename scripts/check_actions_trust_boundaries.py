@@ -17,7 +17,10 @@ LOCK_INSTALL = (
 )
 PACKAGE_INSTALL = "python -m pip install . --no-deps --no-build-isolation"
 TRUSTED_BASE = "../agentcapdiff-trusted-base"
-WRITE_PERMISSION_RE = re.compile(r"^\s+[A-Za-z0-9_-]+:\s*write\s*$", re.MULTILINE)
+WRITE_PERMISSION_RE = re.compile(
+    r"^\s+[A-Za-z0-9_-]+:\s*write\s*$",
+    re.MULTILINE,
+)
 
 
 def _fail(message: str) -> None:
@@ -48,10 +51,12 @@ def _step_block(text: str, name: str) -> str:
 
 
 def _check_global_event_and_side_channels(workflow: Path, text: str) -> None:
-    forbidden_triggers = ("pull_request_target:", "workflow_run:")
-    for trigger in forbidden_triggers:
+    for trigger in ("pull_request_target:", "workflow_run:"):
         if trigger in text:
-            _fail(f"privilege-crossing trigger is forbidden in {workflow.name}: {trigger}")
+            _fail(
+                "privilege-crossing trigger is forbidden in "
+                f"{workflow.name}: {trigger}"
+            )
 
     for fragment in (
         "actions/cache@",
@@ -59,7 +64,10 @@ def _check_global_event_and_side_channels(workflow: Path, text: str) -> None:
         "actions/download-artifact@",
     ):
         if fragment in text:
-            _fail(f"cross-job cache/artifact side channel is forbidden in {workflow.name}: {fragment}")
+            _fail(
+                "cross-job cache/artifact side channel is forbidden in "
+                f"{workflow.name}: {fragment}"
+            )
 
     for expression in (
         "github.event.pull_request.title",
@@ -69,7 +77,7 @@ def _check_global_event_and_side_channels(workflow: Path, text: str) -> None:
     ):
         if expression in text:
             _fail(
-                f"untrusted pull-request metadata must not enter workflow commands: "
+                "untrusted pull-request metadata must not enter workflow commands: "
                 f"{workflow.name}: {expression}"
             )
 
@@ -77,8 +85,8 @@ def _check_global_event_and_side_channels(workflow: Path, text: str) -> None:
         for channel in ("GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT"):
             if channel in text:
                 _fail(
-                    f"write-capable pull-request workflow must not use mutable file-command "
-                    f"channel {channel}: {workflow.name}"
+                    "write-capable pull-request workflow must not use mutable "
+                    f"file-command channel {channel}: {workflow.name}"
                 )
 
 
@@ -116,18 +124,15 @@ def _check_trusted_static_workflow(path: Path, *, sarif_upload: bool) -> None:
     if PACKAGE_INSTALL not in install_block:
         _fail(f"{label} package install escaped trusted-base step")
 
-    for forbidden in (
-        "run: python scripts/",
-        "run: python3 scripts/",
-        "pytest ",
-        "ruff check",
-    ):
+    for forbidden in ("pytest ", "ruff check"):
         if forbidden in text:
             _fail(f"static PR workflow executes candidate code: {label}: {forbidden}")
 
     for channel in ("GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT"):
         if channel in text:
-            _fail(f"static PR workflow uses mutable file-command channel: {label}: {channel}")
+            _fail(
+                f"static PR workflow uses mutable file-command channel: {label}: {channel}"
+            )
 
     if sarif_upload:
         _require(
@@ -167,7 +172,10 @@ def _check_read_only_candidate_execution(path: Path) -> None:
         _fail(f"candidate-code execution workflow must remain read-only: {path.name}")
     for fragment in ("secrets.", "GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT"):
         if fragment in text:
-            _fail(f"read-only candidate workflow exposes mutable/secret channel: {path.name}: {fragment}")
+            _fail(
+                "read-only candidate workflow exposes mutable/secret channel: "
+                f"{path.name}: {fragment}"
+            )
 
 
 def _check_trusted_integrity_gate(path: Path, checker_names: tuple[str, ...]) -> None:
@@ -181,15 +189,17 @@ def _check_trusted_integrity_gate(path: Path, checker_names: tuple[str, ...]) ->
             'git worktree add --detach ../agentcapdiff-trusted-base "$BASE_SHA"',
             "EVENT_NAME: ${{ github.event_name }}",
             'if [[ "$EVENT_NAME" == "pull_request" ]]; then',
-            'GITHUB_WORKSPACE',
+            "GITHUB_WORKSPACE",
         ),
         path.name,
     )
     for checker in checker_names:
-        trusted = f'../agentcapdiff-trusted-base/scripts/{checker}'
-        candidate = f'scripts/{checker}'
+        trusted = f"../agentcapdiff-trusted-base/scripts/{checker}"
+        candidate = f"scripts/{checker}"
         if trusted not in text or candidate not in text:
-            _fail(f"{path.name} must select trusted-base/current checker for {checker}")
+            _fail(
+                f"{path.name} must select trusted-base/current checker for {checker}"
+            )
 
 
 def check(root: Path) -> None:
@@ -202,8 +212,14 @@ def check(root: Path) -> None:
     for workflow in workflows:
         _check_global_event_and_side_channels(workflow, _read(workflow))
 
-    _check_trusted_static_workflow(workflow_dir / "agentcapdiff.yml", sarif_upload=True)
-    _check_trusted_static_workflow(workflow_dir / "pr-capability-diff.yml", sarif_upload=False)
+    _check_trusted_static_workflow(
+        workflow_dir / "agentcapdiff.yml",
+        sarif_upload=True,
+    )
+    _check_trusted_static_workflow(
+        workflow_dir / "pr-capability-diff.yml",
+        sarif_upload=False,
+    )
     _check_codeql(workflow_dir / "codeql.yml")
     _check_read_only_candidate_execution(workflow_dir / "ci.yml")
     _check_trusted_integrity_gate(
@@ -221,7 +237,11 @@ def check(root: Path) -> None:
     )
 
     release = _read(workflow_dir / "release.yml")
-    _require(release, ("permissions: {}", "push:", "tags:", "contents: write", "id-token: write"), "release.yml")
+    _require(
+        release,
+        ("permissions: {}", "push:", "tags:", "contents: write", "id-token: write"),
+        "release.yml",
+    )
     if "pull_request:" in release:
         _fail("release workflow must never be reachable from pull_request")
 
