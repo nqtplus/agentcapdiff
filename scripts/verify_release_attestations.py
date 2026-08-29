@@ -261,7 +261,9 @@ def _validate_published_release_state(
             raise ReleaseVerificationError("published release contains a malformed asset record")
         name = asset["name"]
         if Path(name).name != name or name in names:
-            raise ReleaseVerificationError(f"invalid or duplicate published release asset: {name!r}")
+            raise ReleaseVerificationError(
+                f"invalid or duplicate published release asset: {name!r}"
+            )
         names.append(name)
 
     expected_assets = _expected_release_asset_names(tag)
