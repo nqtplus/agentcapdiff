@@ -93,7 +93,7 @@ def _severity_for_rule(rule: PathRule, by_id: dict[str, list[Capability]]) -> st
     severity = rule.base_severity
     for capability_id in rule.scope_sensitive:
         scopes = {cap.scope.kind for cap in by_id.get(capability_id, [])}
-        if "broad" in scopes or "unknown" in scopes:
+        if any(scope != "restricted" for scope in scopes):
             severity = max(
                 severity,
                 "HIGH",
@@ -110,21 +110,22 @@ def _confidence_for_rule(rule: PathRule, by_id: dict[str, list[Capability]]) -> 
                 confidence = cap.confidence if cap.confidence in CONFIDENCE_ORDER else "low"
     for capability_id in rule.scope_sensitive:
         scopes = {cap.scope.kind for cap in by_id.get(capability_id, [])}
-        if "unknown" in scopes:
+        if any(scope not in {"restricted", "broad"} for scope in scopes):
             return "low"
     return confidence
 
 
 def _path_evidence(rule: PathRule, by_id: dict[str, list[Capability]]) -> tuple[str, ...]:
-    evidence: list[str] = []
+    evidence: set[str] = set()
     for capability_id in rule.required:
-        for cap in sorted(by_id[capability_id], key=lambda item: (item.tool, item.source)):
-            scope_values = ", ".join(cap.scope.values) if cap.scope.values else "not established"
-            evidence.append(
-                f"{capability_id} via {cap.tool}; scope={cap.scope.kind} ({scope_values}); "
+        for cap in by_id[capability_id]:
+            scope_values = tuple(sorted(set(cap.scope.values)))
+            values = ", ".join(scope_values) if scope_values else "not established"
+            evidence.add(
+                f"{capability_id} via {cap.tool}; scope={cap.scope.kind} ({values}); "
                 f"confidence={cap.confidence}"
             )
-    return tuple(evidence)
+    return tuple(sorted(evidence))
 
 
 def build_capability_graph(capabilities: list[Capability]) -> CapabilityGraph:
