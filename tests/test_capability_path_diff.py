@@ -3,7 +3,7 @@ from pathlib import Path
 from agentcapdiff.diffing import compare_snapshots, write_snapshot
 from agentcapdiff.formats import markdown_diff_report
 from agentcapdiff.graph import build_capability_graph, capability_graph_to_record
-from agentcapdiff.models import Capability, ScanResult, ScopeEvidence
+from agentcapdiff.models import Capability, ScanResult, ScopeEvidence, ToolRecord
 
 
 def _cap(
@@ -27,6 +27,7 @@ def _cap(
 def _result(capabilities: list[Capability]) -> ScanResult:
     graph = build_capability_graph(capabilities)
     return ScanResult(
+        tools=[ToolRecord(name) for name in sorted({cap.tool for cap in capabilities})],
         capabilities=capabilities,
         capability_graph=capability_graph_to_record(graph),
     )
@@ -131,7 +132,7 @@ def test_existing_path_tool_expansion_is_review_required(tmp_path: Path):
     diff = compare_snapshots(base, head)
     assert diff["paths_added"] == []
     assert diff["capabilities_added"] == []
-    assert diff["tools_added"] == []
+    assert diff["tools_added"] == ["fetch_secondary"]
     assert [item["reasons"] for item in diff["path_escalations"]] == [["tools_expanded"]]
     assert diff["path_changes"][0]["after"]["tools"] == [
         "fetch_primary",

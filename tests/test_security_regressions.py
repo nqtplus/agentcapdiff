@@ -52,7 +52,12 @@ def test_cli_writes_only_to_explicit_output_path(tmp_path: Path):
 def test_scope_output_escapes_untrusted_values_in_markdown(tmp_path: Path):
     base = tmp_path / "base.json"
     head = tmp_path / "head.json"
-    payload = {"risk_score": 0, "capabilities": [], "tools": [], "scopes": []}
+    payload = {
+        "risk_score": 10,
+        "capabilities": ["filesystem.read"],
+        "tools": ["read_file"],
+        "scopes": [],
+    }
     base.write_text(json.dumps(payload), encoding="utf-8")
     head.write_text(
         json.dumps(
