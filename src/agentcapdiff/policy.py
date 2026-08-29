@@ -121,14 +121,14 @@ def _string_set(value: Any, field_name: str) -> set[str]:
 
 
 def _capability_set(value: Any, field_name: str) -> set[str]:
-    raw = _string_set(value, field_name)
-    result: set[str] = set()
-    for item in raw:
-        normalized = _capability_selector(item, field_name)
-        if normalized in result and item != normalized:
-            raise ValueError(f"Policy field {field_name} contains colliding capability selectors")
-        result.add(normalized)
-    return result
+    if value is None:
+        return set()
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"Policy field {field_name} must be a list of strings")
+    return {
+        _capability_selector(item, f"{field_name}[{index}]")
+        for index, item in enumerate(value)
+    }
 
 
 def _canonical_tool_mapping_key(
@@ -519,8 +519,30 @@ def policy_to_record(policy: Policy) -> dict[str, Any]:
     }
 
 
-def _scope_findings(cap: Capability, policy: Policy) -> list[Finding]:
-    constraint = policy.scope_constraints.get(cap.id)
+def _canonical_scope_constraints(policy: Policy) -> dict[str, ScopeConstraint]:
+    result: dict[str, ScopeConstraint] = {}
+    seen: dict[str, str] = {}
+    for capability, constraint in policy.scope_constraints.items():
+        raw = str(capability)
+        canonical = _capability_selector(raw, "scope_constraints")
+        previous = seen.get(canonical)
+        if previous is not None and previous != raw:
+            raise ValueError(
+                "Policy field scope_constraints contains colliding capability selectors "
+                f"{previous!r} and {raw!r}"
+            )
+        seen[canonical] = raw
+        result[canonical] = constraint
+    return result
+
+
+def _scope_findings(
+    cap: Capability,
+    cap_id: str,
+    scope_constraints: dict[str, ScopeConstraint],
+    policy: Policy,
+) -> list[Finding]:
+    constraint = scope_constraints.get(cap_id)
     if constraint is None:
         return []
 
@@ -716,6 +738,7 @@ def evaluate_policy(
 ) -> list[Finding]:
     findings: list[Finding] = []
     allow_by_tool = _canonical_policy_allowlists(policy)
+    scope_constraints = _canonical_scope_constraints(policy)
     suppressions = _canonical_suppressions(policy)
     targeted_tools = set(allow_by_tool)
     targeted_tools.update(
@@ -724,10 +747,7 @@ def evaluate_policy(
     identity_findings, blocked_identities = _tool_identity_findings(capabilities, targeted_tools)
     findings.extend(identity_findings)
 
-    deny = {
-        _capability_selector(capability, "deny")
-        for capability in policy.deny
-    }
+    deny = {_capability_selector(capability, "deny") for capability in policy.deny}
     require_review = {
         _capability_selector(capability, "require_review")
         for capability in policy.require_review
@@ -736,9 +756,8 @@ def evaluate_policy(
     for cap in capabilities:
         cap_id = _capability_selector(cap.id, "capability.id")
         tool_identity = _runtime_tool_identity(cap.tool)
-        if tool_identity is None:
-            continue
-        key = (cap_id, tool_identity)
+        identity_key = tool_identity if tool_identity is not None else f"raw:{cap.tool}"
+        key = (cap_id, identity_key)
         if key in seen:
             continue
         seen.add(key)
@@ -756,24 +775,30 @@ def evaluate_policy(
             )
             continue
 
-        if tool_identity in blocked_identities:
+        if tool_identity is not None and tool_identity in blocked_identities:
             continue
 
-        allowed = allow_by_tool.get(tool_identity)
-        if allowed is not None and cap_id not in allowed:
-            findings.append(
-                Finding(
-                    "HIGH",
-                    "capability.tool_allowlist_violation",
-                    f"Capability {cap.id} is not allowlisted for tool {cap.tool}.",
-                    cap.id,
-                    cap.tool,
-                    cap.source,
+        if tool_identity is not None:
+            allowed = allow_by_tool.get(tool_identity)
+            if allowed is not None and cap_id not in allowed:
+                findings.append(
+                    Finding(
+                        "HIGH",
+                        "capability.tool_allowlist_violation",
+                        f"Capability {cap.id} is not allowlisted for tool {cap.tool}.",
+                        cap.id,
+                        cap.tool,
+                        cap.source,
+                    )
                 )
-            )
-            continue
+                continue
 
-        scope_findings = _scope_findings(cap, policy)
+        scope_findings = _scope_findings(
+            cap,
+            cap_id,
+            scope_constraints,
+            policy,
+        )
         findings.extend(scope_findings)
         if any(f.severity == "HIGH" for f in scope_findings):
             continue
