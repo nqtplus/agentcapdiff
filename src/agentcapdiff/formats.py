@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import ScanResult
+from .scopes import scope_uncertainty_increased
 
 
 def text_report(result: ScanResult) -> str:
@@ -180,15 +181,24 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
             for item in diff.get("scope_expansions", [])
         }
         for item in scope_changes:
-            capability = _markdown_escape(item.get("capability", ""))
-            tool = _markdown_escape(item.get("tool", ""))
-            marker = " **EXPANSION**" if (
-                str(item.get("capability", "")), str(item.get("tool", ""))
-            ) in expansion_keys else ""
+            capability_raw = str(item.get("capability", ""))
+            tool_raw = str(item.get("tool", ""))
+            capability = _markdown_escape(capability_raw)
+            tool = _markdown_escape(tool_raw)
+            before = item.get("before", {})
+            after = item.get("after", {})
+            if (capability_raw, tool_raw) in expansion_keys:
+                marker = " **EXPANSION**"
+            elif isinstance(before, dict) and isinstance(after, dict) and scope_uncertainty_increased(
+                before, after
+            ):
+                marker = " **REVIEW REQUIRED — SCOPE UNCERTAINTY INCREASED**"
+            else:
+                marker = ""
             lines.append(
                 f"- `{capability}` / `{tool}`{marker}: "
-                f"{_scope_label(item.get('before', {}))} → "
-                f"{_scope_label(item.get('after', {}))}"
+                f"{_scope_label(before if isinstance(before, dict) else {})} → "
+                f"{_scope_label(after if isinstance(after, dict) else {})}"
             )
 
     paths_added = list(diff.get("paths_added", []))
