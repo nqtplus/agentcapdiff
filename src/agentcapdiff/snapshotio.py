@@ -278,7 +278,8 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
                     )
                 if path_id in seen_path_ids:
                     raise SnapshotArtifactError(
-                        f"snapshot capability graph contains duplicate path id {path_id!r}: {source}"
+                        "snapshot capability graph contains duplicate path id "
+                        f"{path_id!r}: {source}"
                     )
                 seen_path_ids.add(path_id)
                 path_severity = item.get("severity")
