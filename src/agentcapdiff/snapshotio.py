@@ -262,6 +262,7 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
             )
         paths = graph.get("paths")
         if paths is not None:
+            seen_path_ids: set[str] = set()
             for item in _record_list(paths, "capability_graph.paths", source):
                 for field in ("id", "title", "severity", "confidence", "message"):
                     _optional_string(
@@ -270,6 +271,16 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
                         source,
                         label=f"capability_graph.paths.{field}",
                     )
+                path_id = item.get("id")
+                if not isinstance(path_id, str) or not path_id.strip():
+                    raise SnapshotArtifactError(
+                        f"snapshot capability path id must be a non-empty string: {source}"
+                    )
+                if path_id in seen_path_ids:
+                    raise SnapshotArtifactError(
+                        f"snapshot capability graph contains duplicate path id {path_id!r}: {source}"
+                    )
+                seen_path_ids.add(path_id)
                 path_severity = item.get("severity")
                 if path_severity is not None and path_severity not in _SEVERITIES:
                     raise SnapshotArtifactError(
