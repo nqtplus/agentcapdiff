@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -13,6 +14,7 @@ class DependencyUpdateIntegrityError(ValueError):
 
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 PIN_RE = re.compile(
     r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>[^\s;]+)$"
 )
@@ -44,6 +46,7 @@ MAINTENANCE_ONLY_DIRECT = frozenset({"build"})
 DEPENDABOT_EXACT_PATHS = frozenset(
     {
         "pyproject.toml",
+        "requirements/action-runtime-lock.txt",
         "requirements/ci-direct.txt",
         "requirements/ci-lock.txt",
     }
@@ -91,11 +94,86 @@ def _parse_pin_file(path: Path, label: str) -> dict[str, str]:
     return pins
 
 
-def _project_declared_pins(root: Path) -> dict[str, str]:
+def _logical_requirement_lines(path: Path) -> list[tuple[int, str]]:
+    logical: list[tuple[int, str]] = []
+    buffer: list[str] = []
+    start_line = 0
+    for line_number, raw in enumerate(_read(path).splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if not buffer:
+            start_line = line_number
+        continued = line.endswith("\\")
+        if continued:
+            line = line[:-1].rstrip()
+        buffer.append(line)
+        if not continued:
+            logical.append((start_line, " ".join(buffer)))
+            buffer = []
+    if buffer:
+        _fail(f"hashed dependency lock has dangling continuation at line {start_line}")
+    return logical
+
+
+def _parse_hashed_lock(path: Path, label: str) -> dict[str, tuple[str, tuple[str, ...]]]:
+    pins: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for line_number, logical in _logical_requirement_lines(path):
+        tokens = shlex.split(logical)
+        if not tokens:
+            continue
+        name, version = _parse_pin(tokens[0], f"{label} line {line_number}")
+        hashes: list[str] = []
+        for token in tokens[1:]:
+            prefix = "--hash=sha256:"
+            if not token.startswith(prefix):
+                _fail(f"{label} has unsupported option at line {line_number}: {token}")
+            digest = token.removeprefix(prefix)
+            if SHA256_RE.fullmatch(digest) is None:
+                _fail(f"{label} has invalid SHA-256 at line {line_number}")
+            if digest in hashes:
+                _fail(f"{label} repeats a SHA-256 at line {line_number}")
+            hashes.append(digest)
+        if not hashes:
+            _fail(f"{label} pin lacks artifact SHA-256 at line {line_number}: {name}")
+        if name in pins:
+            _fail(f"{label} contains duplicate package pin: {name}")
+        pins[name] = (version, tuple(hashes))
+    if not pins:
+        _fail(f"{label} has no package pins")
+    return pins
+
+
+def _project_table(root: Path) -> dict[str, object]:
     data = tomllib.loads(_read(root / "pyproject.toml"))
     project = data.get("project")
     if not isinstance(project, dict):
         _fail("pyproject.toml lacks [project]")
+    return data
+
+
+def _project_runtime_pins(root: Path) -> dict[str, str]:
+    data = _project_table(root)
+    project = data["project"]
+    assert isinstance(project, dict)
+    requirements = project.get("dependencies", [])
+    if not isinstance(requirements, list):
+        _fail("project.dependencies must be a list")
+    pins: dict[str, str] = {}
+    for requirement in requirements:
+        name, version = _parse_pin(requirement, "project.dependencies")
+        if name in pins:
+            _fail(f"project.dependencies contains duplicate package pin: {name}")
+        pins[name] = version
+    if not pins:
+        _fail("project.dependencies must contain at least one reviewed runtime pin")
+    return pins
+
+
+def _project_declared_pins(root: Path) -> dict[str, str]:
+    data = _project_table(root)
+    project = data["project"]
+    assert isinstance(project, dict)
     optional = project.get("optional-dependencies", {})
     if not isinstance(optional, dict):
         _fail("project.optional-dependencies must be a table")
@@ -147,6 +225,37 @@ def _check_manifest_consistency(root: Path) -> None:
                 f"CI direct pin must match pyproject exactly for {name}: "
                 f"{direct[name]} != {version}"
             )
+
+
+def _check_action_runtime_lock(root: Path) -> None:
+    runtime = _project_runtime_pins(root)
+    action_lock = _parse_hashed_lock(
+        root / "requirements" / "action-runtime-lock.txt",
+        "Action runtime lock",
+    )
+    ci_lock = _parse_hashed_lock(
+        root / "requirements" / "ci-lock.txt",
+        "CI dependency lock",
+    )
+
+    if set(action_lock) != set(runtime):
+        _fail(
+            "Action runtime lock package set must exactly match project runtime dependencies; "
+            f"expected={sorted(runtime)}, got={sorted(action_lock)}"
+        )
+
+    for name, version in runtime.items():
+        locked_version, action_hashes = action_lock[name]
+        if locked_version != version:
+            _fail(
+                f"Action runtime lock version must match pyproject for {name}: "
+                f"{locked_version} != {version}"
+            )
+        ci_entry = ci_lock.get(name)
+        if ci_entry is None or ci_entry[0] != version:
+            _fail(f"CI dependency lock must contain Action runtime pin {name}=={version}")
+        if set(action_hashes) != set(ci_entry[1]):
+            _fail(f"Action runtime lock hashes must match reviewed CI lock hashes for {name}")
 
 
 def _ecosystem_block(text: str, ecosystem: str) -> str:
@@ -210,29 +319,36 @@ def _check_dependabot_policy(root: Path) -> None:
     )
 
 
-def _check_action_suppliers(root: Path) -> None:
+def _action_definition_files(root: Path) -> list[Path]:
     workflow_dir = root / ".github" / "workflows"
     workflows = sorted(workflow_dir.glob("*.y*ml"))
     if not workflows:
         _fail("no GitHub Actions workflows found")
-    for workflow in workflows:
-        text = _read(workflow)
+    action = root / "action.yml"
+    if not action.is_file():
+        _fail("root composite action.yml is missing")
+    return [*workflows, action]
+
+
+def _check_action_suppliers(root: Path) -> None:
+    for definition in _action_definition_files(root):
+        text = _read(definition)
         for reference in USES_RE.findall(text):
             if reference.startswith("./"):
                 continue
             if "@" not in reference:
-                _fail(f"Action reference missing immutable ref in {workflow.name}: {reference}")
+                _fail(f"Action reference missing immutable ref in {definition.name}: {reference}")
             action, ref = reference.rsplit("@", 1)
             normalized = action.lower()
             if normalized not in ALLOWED_ACTIONS:
                 _fail(
-                    "workflow introduces an unreviewed Action supplier in "
-                    f"{workflow.name}: {action}"
+                    "Action definition introduces an unreviewed Action supplier in "
+                    f"{definition.name}: {action}"
                 )
             if not SHA_RE.fullmatch(ref):
                 _fail(
                     "Action must be pinned to a full commit SHA in "
-                    f"{workflow.name}: {action}@{ref}"
+                    f"{definition.name}: {action}@{ref}"
                 )
 
 
@@ -324,6 +440,7 @@ def check(
 ) -> None:
     root = root.resolve()
     _check_manifest_consistency(root)
+    _check_action_runtime_lock(root)
     _check_dependabot_policy(root)
     _check_action_suppliers(root)
     _check_workflow_integration(root)

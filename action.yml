@@ -5,11 +5,11 @@ branding:
 description: Detect risky AI-agent capability changes in CI.
 inputs:
   path:
-    description: Path to scan
+    description: Path inside GITHUB_WORKSPACE to scan
     required: false
     default: .
   policy:
-    description: Policy file
+    description: Policy file inside GITHUB_WORKSPACE; set empty only to intentionally use built-in defaults
     required: false
     default: agentcapdiff.yaml
   fail-on:
@@ -19,7 +19,15 @@ inputs:
 runs:
   using: composite
   steps:
-    - shell: bash
-      run: python -m pip install "${{ github.action_path }}"
-    - shell: bash
-      run: agentcapdiff scan "${{ inputs.path }}" --policy "${{ inputs.policy }}" --fail-on "${{ inputs.fail-on }}"
+    - name: Run AgentCapDiff in an isolated runtime
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        AGENTCAPDIFF_ACTION_PATH: ${{ github.action_path }}
+        AGENTCAPDIFF_WORKSPACE: ${{ github.workspace }}
+        AGENTCAPDIFF_INPUT_PATH: ${{ inputs.path }}
+        AGENTCAPDIFF_INPUT_POLICY: ${{ inputs.policy }}
+        AGENTCAPDIFF_INPUT_FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        set -euo pipefail
+        python -I "$AGENTCAPDIFF_ACTION_PATH/scripts/run_composite_action.py"

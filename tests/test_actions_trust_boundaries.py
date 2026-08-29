@@ -1,5 +1,6 @@
 import pathlib
 import runpy
+import shutil
 import subprocess
 import sys
 
@@ -10,6 +11,21 @@ CHECK = runpy.run_path(
     str(ROOT / "scripts" / "check_actions_trust_boundaries.py"),
     run_name="check_actions_trust_boundaries",
 )
+
+
+def _copy_composite_contract(tmp_path: pathlib.Path) -> pathlib.Path:
+    (tmp_path / "scripts").mkdir(parents=True)
+    (tmp_path / "requirements").mkdir(parents=True)
+    shutil.copyfile(ROOT / "action.yml", tmp_path / "action.yml")
+    shutil.copyfile(
+        ROOT / "scripts" / "run_composite_action.py",
+        tmp_path / "scripts" / "run_composite_action.py",
+    )
+    shutil.copyfile(
+        ROOT / "requirements" / "action-runtime-lock.txt",
+        tmp_path / "requirements" / "action-runtime-lock.txt",
+    )
+    return tmp_path
 
 
 def test_actions_trust_boundary_contract_passes_for_repository():
@@ -93,3 +109,29 @@ def test_candidate_execution_workflow_must_remain_read_only(tmp_path: pathlib.Pa
 
     with pytest.raises(ValueError, match="must remain read-only"):
         check_read_only(workflow)
+
+
+def test_composite_action_rejects_direct_input_interpolation(tmp_path: pathlib.Path):
+    root = _copy_composite_contract(tmp_path)
+    action = root / "action.yml"
+    source = action.read_text(encoding="utf-8").replace(
+        "        set -euo pipefail\n",
+        '        set -euo pipefail\n        echo "${{ inputs.path }}"\n',
+    )
+    action.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="interpolate untrusted inputs"):
+        CHECK["_check_composite_action"](root)
+
+
+def test_composite_action_rejects_direct_pip_install(tmp_path: pathlib.Path):
+    root = _copy_composite_contract(tmp_path)
+    action = root / "action.yml"
+    source = action.read_text(encoding="utf-8").replace(
+        "        set -euo pipefail\n",
+        "        set -euo pipefail\n        python -m pip install .\n",
+    )
+    action.write_text(source, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="forbidden shell surface: pip install"):
+        CHECK["_check_composite_action"](root)

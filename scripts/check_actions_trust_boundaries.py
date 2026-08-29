@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 class ActionsTrustBoundaryError(ValueError):
-    """Raised when a workflow weakens the reviewed GitHub Actions trust boundary."""
+    """Raised when a workflow or composite Action weakens the reviewed trust boundary."""
 
 
 LOCK_INSTALL = (
@@ -29,7 +29,7 @@ def _fail(message: str) -> None:
 
 def _read(path: Path) -> str:
     if not path.is_file():
-        _fail(f"required workflow missing: {path.as_posix()}")
+        _fail(f"required Actions control file missing: {path.as_posix()}")
     return path.read_text(encoding="utf-8")
 
 
@@ -202,6 +202,68 @@ def _check_trusted_integrity_gate(path: Path, checker_names: tuple[str, ...]) ->
             )
 
 
+def _check_composite_action(root: Path) -> None:
+    action = root / "action.yml"
+    text = _read(action)
+    _require(
+        text,
+        (
+            "runs:\n  using: composite",
+            "working-directory: ${{ github.workspace }}",
+            "AGENTCAPDIFF_ACTION_PATH: ${{ github.action_path }}",
+            "AGENTCAPDIFF_WORKSPACE: ${{ github.workspace }}",
+            "AGENTCAPDIFF_INPUT_PATH: ${{ inputs.path }}",
+            "AGENTCAPDIFF_INPUT_POLICY: ${{ inputs.policy }}",
+            "AGENTCAPDIFF_INPUT_FAIL_ON: ${{ inputs.fail-on }}",
+            'python -I "$AGENTCAPDIFF_ACTION_PATH/scripts/run_composite_action.py"',
+        ),
+        "action.yml",
+    )
+
+    run_marker = "      run: |\n"
+    if text.count(run_marker) != 1:
+        _fail("action.yml must have exactly one reviewed inline run script")
+    run_script = text.split(run_marker, 1)[1]
+    if "${{ inputs." in run_script:
+        _fail("composite Action must not interpolate untrusted inputs into shell source")
+    for forbidden in (
+        "pip install",
+        "GITHUB_ENV",
+        "GITHUB_PATH",
+        "GITHUB_OUTPUT",
+        "eval ",
+        "eval(",
+    ):
+        if forbidden in run_script:
+            _fail(f"composite Action run script contains forbidden shell surface: {forbidden}")
+
+    wrapper = _read(root / "scripts" / "run_composite_action.py")
+    _require(
+        wrapper,
+        (
+            "SUPPORTED_PYTHON = {(3, 11), (3, 12), (3, 13)}",
+            "SUPPORTED_FAIL_ON = {\"never\", \"medium\", \"high\"}",
+            "escapes GITHUB_WORKSPACE",
+            "TemporaryDirectory",
+            "venv.EnvBuilder(with_pip=True, clear=True)",
+            '"--require-hashes"',
+            '"--no-deps"',
+            '"--only-binary=:all:"',
+            '"-I"',
+            "_sanitize_import_path",
+            "action-runtime-lock.txt",
+        ),
+        "composite Action wrapper",
+    )
+    for forbidden in ("shell=True", "os.system(", "eval(", "exec("):
+        if forbidden in wrapper:
+            _fail(f"composite Action wrapper contains forbidden execution primitive: {forbidden}")
+
+    lock = root / "requirements" / "action-runtime-lock.txt"
+    if not lock.is_file() or lock.is_symlink():
+        _fail("composite Action runtime lock must be a regular non-symlink file")
+
+
 def check(root: Path) -> None:
     root = root.resolve()
     workflow_dir = root / ".github" / "workflows"
@@ -240,6 +302,7 @@ def check(root: Path) -> None:
             "check_dependency_update_integrity.py",
         ),
     )
+    _check_composite_action(root)
 
     release = _read(workflow_dir / "release.yml")
     _require(
@@ -253,7 +316,10 @@ def check(root: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Verify GitHub Actions event, permission, and PR trust boundaries."
+        description=(
+            "Verify GitHub Actions event, permission, PR, and composite Action "
+            "trust boundaries."
+        )
     )
     parser.add_argument("--root", type=Path, default=Path("."))
     args = parser.parse_args(argv)
