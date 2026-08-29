@@ -94,8 +94,9 @@ jobs:
         run: |
           set -euo pipefail
           CHECKER="scripts/check_dependency_update_integrity.py"
-          if [[ "$EVENT_NAME" == "pull_request" && -f "../agentcapdiff-trusted-base/$CHECKER" ]]; then
-            CHECKER="../agentcapdiff-trusted-base/$CHECKER"
+          TRUSTED_CHECKER="../agentcapdiff-trusted-base/scripts/check_dependency_update_integrity.py"
+          if [[ "$EVENT_NAME" == "pull_request" && -f "$TRUSTED_CHECKER" ]]; then
+            CHECKER="$TRUSTED_CHECKER"
           fi
           python "$CHECKER" --root "$GITHUB_WORKSPACE"
       - name: Build release artifacts without floating build dependencies
