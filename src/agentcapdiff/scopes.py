@@ -310,8 +310,8 @@ def infer_filesystem_scope(tool: ToolRecord) -> ScopeEvidence:
         return ScopeEvidence(
             "unknown",
             (),
-            "Path schema is optional, alternative, negative, unresolved, "
-            "or otherwise not a proven finite constraint.",
+            "Path schema does not establish a proven finite constraint because it is "
+            "optional, alternative, negative, unresolved, or otherwise ambiguous.",
         )
 
     raw = list(schema.values) + _path_description(text)
@@ -404,8 +404,8 @@ def infer_network_scope(tool: ToolRecord) -> ScopeEvidence:
         return ScopeEvidence(
             "unknown",
             (),
-            "Network schema is optional, alternative, negative, unresolved, "
-            "or otherwise not a proven finite constraint.",
+            "Network schema does not establish a proven finite constraint because it is "
+            "optional, alternative, negative, unresolved, or otherwise ambiguous.",
         )
 
     raw = list(schema.values) + _net_description(text)
