@@ -225,9 +225,12 @@ def _schema_property_matches(rule_id: str, signals: SchemaSignals) -> tuple[str,
             matched.add("property-combination:recipient+message")
         if props & MAIL_DESTINATION_PROPERTIES and actions & SEND_ACTIONS:
             matched.add("action:recipient+send")
-    elif rule_id == "github.write":
-        if props & REPOSITORY_PROPERTIES and actions & GITHUB_MUTATIONS:
-            matched.add("action:repository+mutation")
+    elif (
+        rule_id == "github.write"
+        and props & REPOSITORY_PROPERTIES
+        and actions & GITHUB_MUTATIONS
+    ):
+        matched.add("action:repository+mutation")
 
     return tuple(sorted(matched))
 
