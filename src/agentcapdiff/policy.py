@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -18,6 +20,12 @@ _POLICY_MAX_DEPTH = 64
 _POLICY_MAX_NODES = 20_000
 _MAPPING_FIELDS = frozenset({"allow_by_tool", "scope_constraints", "trust_boundaries"})
 _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
+_SELECTOR_WILDCARDS = frozenset("*?[]{}")
+_IDENTITY_CONTROL_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
+_TOOL_SEPARATOR_RE = re.compile(r"[\s_-]+")
+_IDENTITY_SAFETY_RULES = frozenset(
+    {"policy.tool_identity_ambiguous", "policy.tool_identity_collision"}
+)
 
 
 @dataclass(frozen=True)
@@ -61,6 +69,49 @@ class _PolicyBudget:
     total_bytes: int = 0
 
 
+def _normalize_identity_text(value: str, field_name: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).strip().casefold()
+    if not normalized:
+        raise ValueError(f"Policy field {field_name} must be a non-empty string")
+    if any(unicodedata.category(char) in _IDENTITY_CONTROL_CATEGORIES for char in normalized):
+        raise ValueError(f"Policy field {field_name} contains unsafe control/format characters")
+    return normalized
+
+
+def _reject_wildcard_selector(value: str, field_name: str) -> None:
+    if any(char in _SELECTOR_WILDCARDS for char in value):
+        raise ValueError(
+            f"Policy field {field_name} uses unsupported wildcard selector syntax; "
+            "use an explicit selector or omit an optional suppression selector"
+        )
+
+
+def _capability_selector(value: str, field_name: str) -> str:
+    normalized = _normalize_identity_text(value, field_name)
+    _reject_wildcard_selector(normalized, field_name)
+    return normalized
+
+
+def _rule_selector(value: str, field_name: str) -> str:
+    normalized = _normalize_identity_text(value, field_name)
+    _reject_wildcard_selector(normalized, field_name)
+    return normalized
+
+
+def _tool_selector(value: str, field_name: str) -> str:
+    normalized = _normalize_identity_text(value, field_name)
+    normalized = _TOOL_SEPARATOR_RE.sub("_", normalized)
+    _reject_wildcard_selector(normalized, field_name)
+    return normalized
+
+
+def _runtime_tool_identity(value: str) -> str | None:
+    try:
+        return _tool_selector(value, "runtime.tool")
+    except ValueError:
+        return None
+
+
 def _string_set(value: Any, field_name: str) -> set[str]:
     if value is None:
         return set()
@@ -69,16 +120,48 @@ def _string_set(value: Any, field_name: str) -> set[str]:
     return set(value)
 
 
+def _capability_set(value: Any, field_name: str) -> set[str]:
+    raw = _string_set(value, field_name)
+    result: set[str] = set()
+    for item in raw:
+        normalized = _capability_selector(item, field_name)
+        if normalized in result and item != normalized:
+            raise ValueError(f"Policy field {field_name} contains colliding capability selectors")
+        result.add(normalized)
+    return result
+
+
+def _canonical_tool_mapping_key(
+    tool: str,
+    field_name: str,
+    seen: dict[str, str],
+) -> str:
+    canonical = _tool_selector(tool, field_name)
+    previous = seen.get(canonical)
+    if previous is not None and previous != tool:
+        raise ValueError(
+            f"Policy field {field_name} contains ambiguous tool selectors "
+            f"{previous!r} and {tool!r}"
+        )
+    seen[canonical] = tool
+    return canonical
+
+
 def _load_allow_by_tool(raw: Any) -> dict[str, set[str]]:
     if raw is None:
         return {}
     if not isinstance(raw, dict):
         raise ValueError("Policy field allow_by_tool must be a mapping")
     result: dict[str, set[str]] = {}
+    seen: dict[str, str] = {}
     for tool, capabilities in raw.items():
         if not isinstance(tool, str):
             raise ValueError("Policy allow_by_tool keys must be strings")
-        result[tool] = _string_set(capabilities, f"allow_by_tool.{tool}")
+        canonical_tool = _canonical_tool_mapping_key(tool, "allow_by_tool", seen)
+        result[canonical_tool] = _capability_set(
+            capabilities,
+            f"allow_by_tool.{tool}",
+        )
     return result
 
 
@@ -88,9 +171,18 @@ def _load_scope_constraints(raw: Any) -> dict[str, ScopeConstraint]:
     if not isinstance(raw, dict):
         raise ValueError("Policy field scope_constraints must be a mapping")
     result: dict[str, ScopeConstraint] = {}
+    seen: dict[str, str] = {}
     for capability, config in raw.items():
         if not isinstance(capability, str) or not isinstance(config, dict):
             raise ValueError("Each scope constraint must map a capability to a mapping")
+        canonical_capability = _capability_selector(capability, "scope_constraints")
+        previous = seen.get(canonical_capability)
+        if previous is not None and previous != capability:
+            raise ValueError(
+                "Policy field scope_constraints contains colliding capability selectors "
+                f"{previous!r} and {capability!r}"
+            )
+        seen[canonical_capability] = capability
         allowed_kinds = _string_set(
             config.get("allowed_kinds", ["restricted"]),
             f"scope_constraints.{capability}.allowed_kinds",
@@ -104,7 +196,7 @@ def _load_scope_constraints(raw: Any) -> dict[str, ScopeConstraint]:
         ):
             field_name = f"scope_constraints.{capability}.allowed_values"
             raise ValueError(f"Policy field {field_name} must be a list of strings")
-        result[capability] = ScopeConstraint(
+        result[canonical_capability] = ScopeConstraint(
             allowed_kinds=frozenset(allowed_kinds),
             allowed_values=tuple(sorted(set(allowed_values_raw))),
         )
@@ -117,9 +209,11 @@ def _load_trust_boundaries(raw: Any) -> dict[str, TrustBoundary]:
     if not isinstance(raw, dict):
         raise ValueError("Policy field trust_boundaries must be a mapping")
     result: dict[str, TrustBoundary] = {}
+    seen: dict[str, str] = {}
     for tool, config in raw.items():
         if not isinstance(tool, str):
             raise ValueError("Policy trust_boundaries keys must be strings")
+        canonical_tool = _canonical_tool_mapping_key(tool, "trust_boundaries", seen)
         if isinstance(config, str):
             boundary = config
             trust = "unknown"
@@ -139,7 +233,11 @@ def _load_trust_boundaries(raw: Any) -> dict[str, TrustBoundary]:
             )
         if not isinstance(note, str):
             raise ValueError(f"Trust boundary note for {tool} must be a string")
-        result[tool] = TrustBoundary(boundary=boundary.strip(), trust=trust, note=note.strip())
+        result[canonical_tool] = TrustBoundary(
+            boundary=boundary.strip(),
+            trust=trust,
+            note=note.strip(),
+        )
     return result
 
 
@@ -149,6 +247,7 @@ def _load_suppressions(raw: Any, today: date) -> tuple[Suppression, ...]:
     if not isinstance(raw, list):
         raise ValueError("Policy field suppressions must be a list")
     result: list[Suppression] = []
+    seen_selectors: set[tuple[str, str | None, str | None]] = set()
     for index, item in enumerate(raw):
         field_name = f"suppressions[{index}]"
         if not isinstance(item, dict):
@@ -160,6 +259,7 @@ def _load_suppressions(raw: Any, today: date) -> tuple[Suppression, ...]:
             raise ValueError(f"Policy field {field_name}.rule_id is required")
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError(f"Policy field {field_name}.reason is required")
+        canonical_rule = _rule_selector(rule_id, f"{field_name}.rule_id")
         if isinstance(expires_raw, date) and not isinstance(expires_raw, datetime):
             expires = expires_raw
         elif isinstance(expires_raw, str):
@@ -173,7 +273,7 @@ def _load_suppressions(raw: Any, today: date) -> tuple[Suppression, ...]:
             raise ValueError(f"Policy field {field_name}.expires must be an ISO date")
         if expires < today:
             raise ValueError(
-                f"Policy suppression {rule_id.strip()} expired on {expires.isoformat()}"
+                f"Policy suppression {canonical_rule} expired on {expires.isoformat()}"
             )
         capability = item.get("capability")
         tool = item.get("tool")
@@ -182,13 +282,25 @@ def _load_suppressions(raw: Any, today: date) -> tuple[Suppression, ...]:
                 raise ValueError(
                     f"Policy field {field_name}.{selector_name} must be a non-empty string"
                 )
+        canonical_capability = (
+            _capability_selector(capability, f"{field_name}.capability")
+            if isinstance(capability, str)
+            else None
+        )
+        canonical_tool = (
+            _tool_selector(tool, f"{field_name}.tool") if isinstance(tool, str) else None
+        )
+        selector_key = (canonical_rule, canonical_capability, canonical_tool)
+        if selector_key in seen_selectors:
+            raise ValueError(f"Policy field {field_name} duplicates a suppression selector")
+        seen_selectors.add(selector_key)
         result.append(
             Suppression(
-                rule_id=rule_id.strip(),
+                rule_id=canonical_rule,
                 reason=reason.strip(),
                 expires=expires,
-                capability=capability.strip() if isinstance(capability, str) else None,
-                tool=tool.strip() if isinstance(tool, str) else None,
+                capability=canonical_capability,
+                tool=canonical_tool,
             )
         )
     return tuple(result)
@@ -346,8 +458,8 @@ def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
     if unknown_scope not in {"deny", "review", "ignore"}:
         raise ValueError("Policy unknown_scope must be one of: deny, review, ignore")
     return Policy(
-        deny=_string_set(raw.get("deny", []), "deny"),
-        require_review=_string_set(raw.get("require_review", []), "require_review"),
+        deny=_capability_set(raw.get("deny", []), "deny"),
+        require_review=_capability_set(raw.get("require_review", []), "require_review"),
         max_risk_score=int(raw.get("max_risk_score", 60)),
         allow_by_tool=_load_allow_by_tool(raw.get("allow_by_tool")),
         scope_constraints=_load_scope_constraints(raw.get("scope_constraints")),
@@ -456,23 +568,124 @@ def _scope_findings(cap: Capability, policy: Policy) -> list[Finding]:
     return []
 
 
+def _canonical_policy_allowlists(policy: Policy) -> dict[str, set[str]]:
+    result: dict[str, set[str]] = {}
+    seen: dict[str, str] = {}
+    for tool, capabilities in policy.allow_by_tool.items():
+        canonical_tool = _canonical_tool_mapping_key(str(tool), "allow_by_tool", seen)
+        result[canonical_tool] = {
+            _capability_selector(str(capability), f"allow_by_tool.{tool}")
+            for capability in capabilities
+        }
+    return result
+
+
+def _canonical_suppressions(policy: Policy) -> tuple[Suppression, ...]:
+    result: list[Suppression] = []
+    seen: set[tuple[str, str | None, str | None]] = set()
+    for suppression in policy.suppressions:
+        rule_id = _rule_selector(suppression.rule_id, "suppression.rule_id")
+        capability = (
+            _capability_selector(suppression.capability, "suppression.capability")
+            if suppression.capability is not None
+            else None
+        )
+        tool = (
+            _tool_selector(suppression.tool, "suppression.tool")
+            if suppression.tool is not None
+            else None
+        )
+        selector = (rule_id, capability, tool)
+        if selector in seen:
+            raise ValueError("Policy contains duplicate canonical suppression selectors")
+        seen.add(selector)
+        result.append(
+            Suppression(
+                rule_id=rule_id,
+                reason=suppression.reason,
+                expires=suppression.expires,
+                capability=capability,
+                tool=tool,
+            )
+        )
+    return tuple(result)
+
+
+def _tool_identity_findings(
+    capabilities: list[Capability],
+    targeted_tools: set[str],
+) -> tuple[list[Finding], set[str]]:
+    if not targeted_tools:
+        return [], set()
+
+    raw_by_identity: dict[str, set[str]] = {}
+    ambiguous_raw: set[str] = set()
+    for cap in capabilities:
+        identity = _runtime_tool_identity(cap.tool)
+        if identity is None:
+            ambiguous_raw.add(cap.tool)
+            continue
+        raw_by_identity.setdefault(identity, set()).add(cap.tool)
+        normalized_text = unicodedata.normalize("NFKC", cap.tool).strip()
+        if any(ord(char) > 127 for char in normalized_text) and identity not in targeted_tools:
+            ambiguous_raw.add(cap.tool)
+
+    findings: list[Finding] = []
+    blocked_identities: set[str] = set()
+    for identity, raw_names in sorted(raw_by_identity.items()):
+        if len(raw_names) > 1 and identity in targeted_tools:
+            blocked_identities.add(identity)
+            names = ", ".join(repr(name) for name in sorted(raw_names))
+            findings.append(
+                Finding(
+                    "HIGH",
+                    "policy.tool_identity_collision",
+                    f"Multiple tool names collapse to policy identity {identity!r}: {names}",
+                )
+            )
+
+    for raw_name in sorted(ambiguous_raw):
+        findings.append(
+            Finding(
+                "HIGH",
+                "policy.tool_identity_ambiguous",
+                f"Tool identity cannot be matched safely to configured selectors: {raw_name!r}",
+                tool=raw_name,
+            )
+        )
+    return findings, blocked_identities
+
+
 def _suppression_matches(finding: Finding, suppression: Suppression) -> bool:
-    if finding.rule_id != suppression.rule_id:
+    if finding.rule_id in _IDENTITY_SAFETY_RULES:
         return False
-    if suppression.capability is not None and finding.capability != suppression.capability:
+    if _rule_selector(finding.rule_id, "finding.rule_id") != suppression.rule_id:
         return False
-    return suppression.tool is None or finding.tool == suppression.tool
+    if suppression.capability is not None:
+        if finding.capability is None:
+            return False
+        if _capability_selector(finding.capability, "finding.capability") != suppression.capability:
+            return False
+    if suppression.tool is None:
+        return True
+    if finding.tool is None:
+        return False
+    identity = _runtime_tool_identity(finding.tool)
+    return identity is not None and identity == suppression.tool
 
 
-def _apply_suppressions(findings: list[Finding], policy: Policy) -> list[Finding]:
-    if not policy.suppressions:
+def _apply_suppressions(
+    findings: list[Finding],
+    suppressions: tuple[Suppression, ...],
+) -> list[Finding]:
+    if not suppressions:
         return findings
     result: list[Finding] = []
     for finding in findings:
         suppression = next(
             (
                 candidate
-                for candidate in policy.suppressions
+                for candidate in suppressions
                 if _suppression_matches(finding, candidate)
             ),
             None,
@@ -502,14 +715,35 @@ def evaluate_policy(
     risk_score: int,
 ) -> list[Finding]:
     findings: list[Finding] = []
+    allow_by_tool = _canonical_policy_allowlists(policy)
+    suppressions = _canonical_suppressions(policy)
+    targeted_tools = set(allow_by_tool)
+    targeted_tools.update(
+        suppression.tool for suppression in suppressions if suppression.tool is not None
+    )
+    identity_findings, blocked_identities = _tool_identity_findings(capabilities, targeted_tools)
+    findings.extend(identity_findings)
+
+    deny = {
+        _capability_selector(capability, "deny")
+        for capability in policy.deny
+    }
+    require_review = {
+        _capability_selector(capability, "require_review")
+        for capability in policy.require_review
+    }
     seen: set[tuple[str, str]] = set()
     for cap in capabilities:
-        key = (cap.id, cap.tool)
+        cap_id = _capability_selector(cap.id, "capability.id")
+        tool_identity = _runtime_tool_identity(cap.tool)
+        if tool_identity is None:
+            continue
+        key = (cap_id, tool_identity)
         if key in seen:
             continue
         seen.add(key)
 
-        if cap.id in policy.deny:
+        if cap_id in deny:
             findings.append(
                 Finding(
                     "HIGH",
@@ -522,8 +756,11 @@ def evaluate_policy(
             )
             continue
 
-        allowed = policy.allow_by_tool.get(cap.tool)
-        if allowed is not None and cap.id not in allowed:
+        if tool_identity in blocked_identities:
+            continue
+
+        allowed = allow_by_tool.get(tool_identity)
+        if allowed is not None and cap_id not in allowed:
             findings.append(
                 Finding(
                     "HIGH",
@@ -541,7 +778,7 @@ def evaluate_policy(
         if any(f.severity == "HIGH" for f in scope_findings):
             continue
 
-        if cap.id in policy.require_review:
+        if cap_id in require_review:
             findings.append(
                 Finding(
                     "MEDIUM",
@@ -561,4 +798,4 @@ def evaluate_policy(
                 f"Risk score {risk_score} exceeds policy threshold {policy.max_risk_score}.",
             )
         )
-    return _apply_suppressions(findings, policy)
+    return _apply_suppressions(findings, suppressions)
