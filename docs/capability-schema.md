@@ -58,6 +58,21 @@ When the same `(tool name, source file)` is discovered through multiple serializ
 
 If a framework exposes dynamic, incomplete, or ambiguous permissions, the adapter must preserve that uncertainty. In particular, unknown scope stays `unknown`; it must never be converted to `restricted` merely because a framework-specific field is missing or unsupported.
 
+## Conservative static scope evidence
+
+`scope.kind = restricted` is a security-relevant claim and therefore requires an applied, finite static upper bound. For JSON-Schema-style inputs, AgentCapDiff treats `const` and finite string `enum` values as restriction evidence. `default` and `examples` are annotations, not authorization constraints, and never establish a restricted scope by themselves.
+
+Schema composition is interpreted conservatively:
+
+- `allOf` may preserve a finite bound supplied by an applied branch;
+- `anyOf` and `oneOf` are restricted only when every possible branch that can supply the scope is finitely bounded; otherwise the result is `unknown`;
+- a negative `not` clause is never read as positive permission evidence;
+- unused `$defs` / `definitions` are not treated as applied restrictions;
+- unresolved `$ref`, conditional/optional alternatives, or an explicitly present but unconstrained path/destination field preserve `unknown` rather than trusting a reassuring description;
+- common camelCase/hyphenated aliases are normalized before matching path/network scope fields, so representation style cannot silently drop a proven bound.
+
+A transition from `restricted` to `unknown` is deliberately **not** labeled a proven runtime expansion: unknown evidence cannot establish what the runtime can actually reach. It is nevertheless highlighted in human review as **SCOPE UNCERTAINTY INCREASED / REVIEW REQUIRED** because a previously established finite static boundary was lost. Existing machine-readable `scope_changes` and `scope_expansions` semantics remain compatible for 1.x.
+
 ## Adapter conformance gate
 
 The v0.3 conformance suite expresses equivalent filesystem and external-network tools through every supported static adapter shape and verifies that:
@@ -69,7 +84,7 @@ The v0.3 conformance suite expresses equivalent filesystem and external-network 
 5. an existing deny-policy decision cannot become weaker merely because the same privilege is represented by another framework;
 6. ambiguous framework attribution remains generic instead of being guessed.
 
-Post-v1.0 security regressions additionally cover schema-hidden high-risk signals and duplicate-shape collisions so a supported static representation cannot downgrade a dangerous capability simply by moving evidence out of the display name/description or by colliding on the same tool name/source.
+Post-v1.0 security regressions additionally cover schema-hidden high-risk signals, duplicate-shape collisions, annotation-vs-constraint semantics, JSON Schema alternatives/negative definitions, normalized scope aliases, and loss of proven scope certainty.
 
 This is a semantic conformance test, not a claim that every possible SDK object or runtime configuration is recognized.
 
