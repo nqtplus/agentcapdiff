@@ -130,6 +130,33 @@ def _markdown_path(path: dict[str, Any]) -> str:
     )
 
 
+def _markdown_path_change(change: dict[str, Any], *, escalated: bool) -> str:
+    before = change.get("before", {})
+    after = change.get("after", {})
+    if not isinstance(before, dict):
+        before = {}
+    if not isinstance(after, dict):
+        after = {}
+    path_id = _markdown_escape(change.get("id", "possible capability path"))
+    before_severity = _markdown_escape(before.get("severity", "INFO"))
+    after_severity = _markdown_escape(after.get("severity", "INFO"))
+    before_confidence = _markdown_escape(before.get("confidence", "low"))
+    after_confidence = _markdown_escape(after.get("confidence", "low"))
+    before_tools = ", ".join(
+        f"`{_markdown_escape(value)}`" for value in before.get("tools", [])
+    ) or "(none)"
+    after_tools = ", ".join(
+        f"`{_markdown_escape(value)}`" for value in after.get("tools", [])
+    ) or "(none)"
+    marker = " **REVIEW REQUIRED — PATH RISK/UNCERTAINTY INCREASED**" if escalated else ""
+    return (
+        f"- `{path_id}`{marker}: severity **{before_severity} → {after_severity}**; "
+        f"confidence **{before_confidence} → {after_confidence}**; "
+        f"tools {before_tools} → {after_tools}. Static evidence only; runtime "
+        "reachability/exploitability is not established."
+    )
+
+
 def markdown_diff_report(diff: dict[str, Any]) -> str:
     base_risk = int(diff.get("base_risk_score", 0))
     head_risk = int(diff.get("head_risk_score", 0))
@@ -209,6 +236,21 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
         has_change = True
         lines.extend(["", "### New possible capability paths"])
         lines.extend(_markdown_path(path) for path in paths_added)
+
+    path_changes = list(diff.get("path_changes", []))
+    if path_changes:
+        has_change = True
+        lines.extend(["", "### Changed possible capability paths"])
+        escalation_ids = {
+            str(item.get("id", "")) for item in diff.get("path_escalations", [])
+        }
+        lines.extend(
+            _markdown_path_change(
+                change,
+                escalated=str(change.get("id", "")) in escalation_ids,
+            )
+            for change in path_changes
+        )
 
     policy_warnings = list(diff.get("policy_weakening_warnings", []))
     if policy_warnings:
