@@ -4,6 +4,7 @@
   "runner_os": "Linux",
   "runner_arch": "X64",
   "image_os": "ubuntu24",
+  "image_version": "20260823.283.1",
   "image_versions": [
     "20260628.225.1",
     "20260823.283.1"
