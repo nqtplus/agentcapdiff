@@ -84,7 +84,8 @@ def check(
             _fail(f"{name} provenance mismatch: expected {expected!r}, got {actual!r}")
         observed_env[name] = actual
 
-    actual_image = os.environ.get("ImageVersion")
+    # GitHub's hosted runner contract exposes this mixed-case environment name.
+    actual_image = os.environ.get("ImageVersion")  # noqa: SIM112
     reviewed_images = config["image_versions"]
     assert isinstance(reviewed_images, list)
     if actual_image not in reviewed_images:
