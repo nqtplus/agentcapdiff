@@ -310,8 +310,8 @@ def _git_changed_paths(root: Path, base_sha: str, head_sha: str) -> list[str]:
         _fail("Dependabot changed-path output exceeds safety bound")
     try:
         decoded = result.stdout.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as exc:
-        _fail("Dependabot changed-path output is not valid UTF-8") from exc
+    except UnicodeDecodeError:
+        _fail("Dependabot changed-path output is not valid UTF-8")
     paths = [item for item in decoded.split("\x00") if item]
     check_changed_paths(paths)
     return paths
