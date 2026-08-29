@@ -5,7 +5,6 @@ import sys
 
 import pytest
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CHECK = runpy.run_path(
     str(ROOT / "scripts" / "check_dependency_update_integrity.py"),
