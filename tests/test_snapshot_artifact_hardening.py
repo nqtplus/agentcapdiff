@@ -185,3 +185,52 @@ def test_old_snapshot_and_additive_fields_remain_backward_readable(tmp_path: Pat
     assert diff["base_capability_fingerprint"] == expected
     assert diff["head_capability_fingerprint"] == expected
     assert diff["fingerprint_changed"] is False
+
+
+def test_snapshot_rejects_duplicate_capability_path_ids(tmp_path: Path) -> None:
+    base = tmp_path / "base.json"
+    head = tmp_path / "head.json"
+    duplicate_path = {
+        "id": "possible.secrets_network_exfiltration",
+        "severity": "MEDIUM",
+        "confidence": "medium",
+        "capabilities": ["secrets.access", "network.external"],
+        "tools": ["fetch", "secret"],
+        "evidence": [],
+    }
+    _write_snapshot(
+        base,
+        capability_graph={
+            "schema_version": "1",
+            "paths": [duplicate_path, {**duplicate_path, "severity": "HIGH"}],
+        },
+    )
+    _write_snapshot(head)
+
+    with pytest.raises(SnapshotArtifactError, match="duplicate path id"):
+        compare_snapshots(base, head)
+
+
+def test_snapshot_rejects_empty_capability_path_id(tmp_path: Path) -> None:
+    base = tmp_path / "base.json"
+    head = tmp_path / "head.json"
+    _write_snapshot(
+        base,
+        capability_graph={
+            "schema_version": "1",
+            "paths": [
+                {
+                    "id": "   ",
+                    "severity": "HIGH",
+                    "confidence": "low",
+                    "capabilities": [],
+                    "tools": [],
+                    "evidence": [],
+                }
+            ],
+        },
+    )
+    _write_snapshot(head)
+
+    with pytest.raises(SnapshotArtifactError, match="path id must be a non-empty string"):
+        compare_snapshots(base, head)
