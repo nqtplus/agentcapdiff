@@ -16,8 +16,24 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - run: python3 scripts/check_ci_environment.py --python-version "3.12.3" --pip-version "24.0"
+      - name: Verify runner provenance from trusted source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          CHECKER="scripts/check_ci_environment.py"
+          ARGS=(--python-version "3.12.3" --pip-version "24.0")
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git worktree add --detach ../agentcapdiff-trusted-base "$BASE_SHA"
+            python3 "../agentcapdiff-trusted-base/$CHECKER" "${ARGS[@]}"
+          else
+            python3 "$CHECKER" "${ARGS[@]}"
+          fi
       - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
         with:
           languages: python
