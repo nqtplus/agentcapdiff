@@ -141,7 +141,7 @@ def test_existing_path_tool_expansion_is_review_required(tmp_path: Path):
 
     markdown = markdown_diff_report(diff)
     assert "PATH RISK/UNCERTAINTY INCREASED" in markdown
-    assert "fetch_secondary" in markdown
+    assert "fetch\\_secondary" in markdown
 
 
 def test_reordered_capability_records_do_not_create_path_change(tmp_path: Path):
