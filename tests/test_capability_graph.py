@@ -22,12 +22,14 @@ def _cap(
     scope: str = "unknown",
     values: tuple[str, ...] = (),
     confidence: str = "medium",
+    source: str = "",
 ) -> Capability:
     return Capability(
         id=capability_id,
         tool=tool,
         risk=RISK[capability_id],
         reason="test evidence",
+        source=source,
         scope=ScopeEvidence(kind=scope, values=values),
         confidence=confidence,
     )
@@ -103,3 +105,69 @@ def test_unpaired_capability_does_not_create_a_path():
     graph = build_capability_graph([_cap("secrets.access", "read_secret")])
     assert graph.paths == ()
     assert graph.edges == ()
+
+
+def test_path_evidence_is_deduplicated_and_order_independent_for_tied_records():
+    records = [
+        _cap("secrets.access", "read_secret", confidence="high"),
+        _cap(
+            "network.external",
+            "fetch_url",
+            scope="restricted",
+            values=("b.example.com", "a.example.com", "a.example.com"),
+            confidence="high",
+            source="tools.json",
+        ),
+        _cap(
+            "network.external",
+            "fetch_url",
+            scope="unknown",
+            confidence="medium",
+            source="tools.json",
+        ),
+        _cap(
+            "network.external",
+            "fetch_url",
+            scope="restricted",
+            values=("b.example.com", "a.example.com", "a.example.com"),
+            confidence="high",
+            source="tools.json",
+        ),
+    ]
+    forward = build_capability_graph(records).paths[0]
+    backward = build_capability_graph(list(reversed(records))).paths[0]
+
+    assert forward == backward
+    assert len(forward.evidence) == 3
+    assert forward.evidence == tuple(sorted(forward.evidence))
+    assert any("a.example.com, b.example.com" in item for item in forward.evidence)
+    assert forward.severity == "HIGH"
+    assert forward.confidence == "low"
+
+
+def test_unrecognized_scope_kind_is_conservative_uncertainty():
+    graph = build_capability_graph(
+        [
+            _cap("secrets.access", "read_secret", confidence="high"),
+            _cap("network.external", "fetch_url", scope="mystery", confidence="high"),
+        ]
+    )
+    path = graph.paths[0]
+
+    assert path.severity == "HIGH"
+    assert path.confidence == "low"
+    assert any("scope=mystery" in item for item in path.evidence)
+
+
+def test_aliased_tool_names_do_not_duplicate_a_rule_path():
+    graph = build_capability_graph(
+        [
+            _cap("secrets.access", "read-secret"),
+            _cap("secrets.access", "read secret"),
+            _cap("network.external", "fetch-url", scope="restricted"),
+            _cap("network.external", "fetch url", scope="restricted"),
+        ]
+    )
+
+    assert [path.id for path in graph.paths] == ["possible.secrets_network_exfiltration"]
+    assert graph.paths[0].tools == ("fetch url", "fetch-url", "read secret", "read-secret")

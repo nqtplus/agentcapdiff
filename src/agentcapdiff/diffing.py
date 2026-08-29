@@ -12,6 +12,9 @@ from .schema import capability_to_record
 from .scopes import scope_is_expansion, scope_records
 from .snapshotio import DEFAULT_SNAPSHOT_LIMITS, SnapshotLimits, load_snapshot
 
+_PATH_SEVERITY_ORDER = {"INFO": 0, "LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
+_PATH_CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
+
 
 def capability_fingerprint(capabilities: Iterable[str]) -> str:
     """Return a stable SHA-256 fingerprint of the normalized capability surface."""
@@ -140,6 +143,53 @@ def _path_records(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(paths, list):
         return []
     return [item for item in paths if isinstance(item, dict) and item.get("id")]
+
+
+def _normalized_path_record(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(item.get("id", "")),
+        "title": str(item.get("title", "")),
+        "severity": str(item.get("severity", "INFO")),
+        "confidence": str(item.get("confidence", "low")),
+        "capabilities": [str(value) for value in item.get("capabilities", [])],
+        "tools": sorted({str(value) for value in item.get("tools", [])}),
+        "evidence": sorted({str(value) for value in item.get("evidence", [])}),
+        "message": str(item.get("message", "")),
+    }
+
+
+def _path_change_records(
+    base_paths: dict[str, dict[str, Any]],
+    head_paths: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    changes: list[dict[str, Any]] = []
+    escalations: list[dict[str, Any]] = []
+    for path_id in sorted(base_paths.keys() & head_paths.keys()):
+        before = _normalized_path_record(base_paths[path_id])
+        after = _normalized_path_record(head_paths[path_id])
+        if before == after:
+            continue
+
+        change = {"id": path_id, "before": before, "after": after}
+        changes.append(change)
+
+        reasons: list[str] = []
+        if _PATH_SEVERITY_ORDER.get(after["severity"], 0) > _PATH_SEVERITY_ORDER.get(
+            before["severity"], 0
+        ):
+            reasons.append("severity_increased")
+        if _PATH_CONFIDENCE_ORDER.get(after["confidence"], 0) < _PATH_CONFIDENCE_ORDER.get(
+            before["confidence"], 0
+        ):
+            reasons.append("confidence_decreased")
+        if after["capabilities"] != before["capabilities"]:
+            reasons.append("capabilities_changed")
+        if set(after["tools"]) - set(before["tools"]):
+            reasons.append("tools_expanded")
+
+        if reasons:
+            escalations.append({**change, "reasons": reasons})
+    return changes, escalations
 
 
 def _policy_record(snapshot: dict[str, Any]) -> dict[str, Any] | None:
@@ -372,6 +422,7 @@ def compare_snapshots(
     head_paths = {str(item["id"]): item for item in _path_records(b)}
     added_path_ids = sorted(head_paths.keys() - base_paths.keys())
     removed_path_ids = sorted(base_paths.keys() - head_paths.keys())
+    path_changes, path_escalations = _path_change_records(base_paths, head_paths)
     base_policy = _policy_record(a)
     head_policy = _policy_record(b)
     base_policy_fingerprint = _policy_fingerprint(base_policy)
@@ -385,6 +436,8 @@ def compare_snapshots(
         "scope_expansions": scope_expansions,
         "paths_added": [head_paths[path_id] for path_id in added_path_ids],
         "paths_removed": [base_paths[path_id] for path_id in removed_path_ids],
+        "path_changes": path_changes,
+        "path_escalations": path_escalations,
         "head_paths": [head_paths[path_id] for path_id in sorted(head_paths)],
         "base_risk_score": base_risk,
         "head_risk_score": head_risk,
