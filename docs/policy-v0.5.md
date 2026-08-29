@@ -16,6 +16,24 @@ allow_by_tool:
 
 This allowlist does not prove runtime enforcement. It only evaluates the normalized static capability evidence AgentCapDiff recognized.
 
+## Selector identity and ambiguity
+
+Policy selectors are security-relevant identities, not display strings. To prevent harmless representation differences from dropping an intended control, capability IDs and suppression rule IDs are normalized with Unicode NFKC, surrounding-whitespace removal, and case folding. Tool selectors additionally treat runs of whitespace, `_`, and `-` as one canonical separator. For example, `Repo-Tool`, `repo_tool`, and the NFKC-equivalent fullwidth representation resolve to the same policy tool identity.
+
+Canonicalization is deliberately finite and deterministic. It is **not** fuzzy matching and does not claim that visually similar Unicode characters are the same runtime identity. Where tool-targeted enforcement is configured, ambiguous non-ASCII identities that cannot be matched safely and multiple observed raw tool names that collapse to the same configured canonical identity produce HIGH policy-identity findings instead of silently choosing one interpretation.
+
+Policy loading fails closed for selector definitions that are unsafe or ambiguous:
+
+- empty selectors are rejected;
+- control/format characters in policy identities are rejected;
+- wildcard-looking selector syntax such as `*`, `?`, `[]`, or `{}` is rejected because wildcard matching is not part of the 1.x policy contract;
+- canonical collisions in `allow_by_tool`, `scope_constraints`, or `trust_boundaries` are rejected rather than letting mapping order choose a winner;
+- duplicate canonical suppression selectors are rejected.
+
+For a suppression that should apply to any tool or any capability, omit the optional selector instead of writing a wildcard. Global `deny`, scope constraints, and `require_review` continue to apply even when a runtime tool name itself is too ambiguous to canonicalize; an unsafe tool identity must not create a path around global policy.
+
+These rules affect static policy matching only. They do not rename runtime tools, resolve framework object identity, or prove that two tools are operationally equivalent.
+
 ## Scope constraints
 
 `scope_constraints` can require allowed scope kinds and, optionally, exact statically observed scope values.
@@ -80,6 +98,8 @@ Precedence is deterministic:
 
 Inheritance is intentionally local. Absolute paths are rejected, every inherited file must resolve inside the root policy directory, symlinked policy files are rejected, cycles are rejected, and inheritance depth is bounded. These controls reduce the chance that scanning an untrusted repository causes policy loading to read unrelated local files.
 
+Raw inheritance precedence remains deterministic, but effective selector identities are validated after inheritance. If parent/child mapping keys differ textually yet collapse to the same canonical security identity, policy loading fails closed rather than treating spelling tricks as a legitimate override.
+
 Because child precedence can intentionally relax a parent policy, PR policy diffing separately warns when the effective policy becomes less restrictive.
 
 ## Temporary suppressions: reason + expiry required
@@ -99,6 +119,8 @@ suppressions:
 
 Expiry is evaluated by UTC date. A suppression is valid through its expiry date; after that date the policy is invalid and scanning fails closed. Malformed suppression entries also invalidate the policy. This prevents an old exception from silently becoming permanent.
 
+Policy-identity ambiguity/collision findings are not suppressible: they mean AgentCapDiff cannot safely establish which tool-targeted selector should apply. Resolve the identity collision or ambiguity instead of suppressing that uncertainty.
+
 ## Evaluation precedence
 
 For each capability/tool pair, enforcement remains conservative and deterministic:
@@ -110,7 +132,7 @@ For each capability/tool pair, enforcement remains conservative and deterministi
 5. global risk-score threshold
 6. a valid, unexpired matching suppression may convert the resulting finding to visible INFO suppression evidence
 
-A global deny therefore cannot be weakened merely by adding the same capability to a tool allowlist. Suppressions are the explicit temporary exception mechanism and must carry reason + expiry.
+A global deny therefore cannot be weakened merely by adding the same capability to a tool allowlist. Suppressions are the explicit temporary exception mechanism and must carry reason + expiry. Tool-identity ambiguity does not bypass global deny/review/scope enforcement.
 
 ## Policy fingerprints and weakening warnings
 
@@ -135,7 +157,9 @@ The CLI and composite GitHub Action default to `--fail-on medium`. This makes re
 
 ## Backwards compatibility
 
-Legacy policies containing only `deny`, `require_review`, and `max_risk_score` remain valid and retain their previous evaluation semantics. All v0.5 fields are additive. Snapshot policy metadata is additive, and snapshots written before v0.5 remain readable.
+Legacy policies containing only `deny`, `require_review`, and `max_risk_score` remain valid and retain their previous evaluation precedence. All v0.5 fields are additive. Snapshot policy metadata is additive, and snapshots written before v0.5 remain readable.
+
+Selector canonicalization is a security hardening within the existing normalized-ID contract: canonical lowercase ASCII selectors retain their exact effective representation, while case/fullwidth/common-separator aliases now resolve consistently or fail closed on ambiguity instead of silently dropping a control.
 
 ## Safety limits
 
