@@ -57,7 +57,8 @@ def _check_release_workflow(root: Path) -> None:
         )
     if "--require-published-release" in release:
         raise AttestationIntegrityError(
-            "producer prepublication verification must not require a release that does not exist yet"
+            "producer prepublication verification must not require a release "
+            "that does not exist yet"
         )
 
 
