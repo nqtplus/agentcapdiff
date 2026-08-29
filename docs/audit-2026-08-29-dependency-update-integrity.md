@@ -92,12 +92,26 @@ The checker is also wired into release-integrity, normal CI regression gates, an
 
 Detailed maintenance procedure: `docs/dependency-maintenance.md`.
 
+## Same-audit post-merge reconciliation: GitHub-hosted runner fleet skew
+
+The first squash merge of PR #43 produced main `df1d48e7783ff370e7af83228027e70b7fc0f5ac`. Three post-merge push gates passed, but CodeQL failed before analysis because GitHub scheduled that job on Ubuntu 24.04 image `20260628.225.1` while the provenance policy accepted only `20260823.283.1`.
+
+This was a useful fail-closed signal rather than a reason to disable provenance checks. GitHub's official `actions/runner-images` data confirms both exact image versions as Ubuntu 24.04.4 GitHub-hosted images with the ambient Python 3.12.3 and pip 24.0 values expected by the CodeQL/state jobs:
+
+- `20260628.225.1` — Ubuntu 24.04.4;
+- `20260823.283.1` — Ubuntu 24.04.4.
+
+The reconciliation therefore keeps `ubuntu-24.04` pinned and replaces the single-image runtime assumption with a **small explicit reviewed image allowlist**. `20260823.283.1` remains the canonical reviewed image marker, while the runtime provenance checker accepts only the two explicitly reviewed fleet versions. An unknown image still fails closed. Regression tests cover acceptance of the observed reviewed fleet skew and rejection of an arbitrary unreviewed image.
+
+This is not a wildcard, date range, moving alias, or trust of arbitrary GitHub runner images. Adding another image version still requires an explicit reviewed repository change.
+
 ## Residual trust boundaries
 
 - GitHub Dependabot service behavior and security-advisory coverage remain external trust inputs.
 - PyPI account/project security and the authenticity of artifacts associated with an accepted hash remain external trust inputs.
 - GitHub Action repository ownership and upstream account security remain external trust inputs even when an exact commit is pinned.
-- A human maintainer still decides whether a new dependency/version/supplier should enter the allowlisted trust set.
+- GitHub-hosted runner fleet assignment remains an external trust input; only explicitly reviewed image versions are accepted.
+- A human maintainer still decides whether a new dependency/version/supplier/runner image should enter the allowlisted trust set.
 - The custom Python lock is deliberately review-driven rather than automatically regenerated; this reduces unreviewed drift but does not guarantee that the chosen versions are defect-free.
 
 `UNKNOWN` is not treated as safe.
