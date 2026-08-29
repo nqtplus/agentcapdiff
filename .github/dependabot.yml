@@ -5,7 +5,12 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+      time: "03:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    # The repository uses a reviewed multi-manifest, hash-locked closure.
+    # Keep automated security updates, but require coordinated human-reviewed
+    # PRs for routine Python version refreshes.
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
 
@@ -14,6 +19,15 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 5
+      time: "03:30"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    allow:
+      - dependency-name: "actions/checkout"
+      - dependency-name: "actions/setup-python"
+      - dependency-name: "actions/attest"
+      - dependency-name: "github/codeql-action"
     labels:
       - "dependencies"

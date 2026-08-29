@@ -87,6 +87,18 @@ jobs:
           else
             python scripts/check_actions_trust_boundaries.py --root "$GITHUB_WORKSPACE"
           fi
+      - name: Verify dependency-update integrity
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          CHECKER="scripts/check_dependency_update_integrity.py"
+          TRUSTED_CHECKER="../agentcapdiff-trusted-base/scripts/check_dependency_update_integrity.py"
+          if [[ "$EVENT_NAME" == "pull_request" && -f "$TRUSTED_CHECKER" ]]; then
+            CHECKER="$TRUSTED_CHECKER"
+          fi
+          python "$CHECKER" --root "$GITHUB_WORKSPACE"
       - name: Build release artifacts without floating build dependencies
         run: python -m build --no-isolation
       - name: Generate and validate SPDX SBOM

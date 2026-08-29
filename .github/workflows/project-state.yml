@@ -38,6 +38,25 @@ jobs:
           else
             python3 "$CHECKER" "${ARGS[@]}"
           fi
+      - name: Verify dependency-update integrity
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IS_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          CHECKER="scripts/check_dependency_update_integrity.py"
+          TRUSTED_CHECKER="../agentcapdiff-trusted-base/scripts/check_dependency_update_integrity.py"
+          if [[ "$EVENT_NAME" == "pull_request" && -f "$TRUSTED_CHECKER" ]]; then
+            CHECKER="$TRUSTED_CHECKER"
+          fi
+          ARGS=(--root "$GITHUB_WORKSPACE")
+          if [[ "$EVENT_NAME" == "pull_request" && "$IS_DEPENDABOT" == "true" ]]; then
+            ARGS+=(--base-sha "$BASE_SHA" --head-sha "$HEAD_SHA")
+          fi
+          python "$CHECKER" "${ARGS[@]}"
       - name: Verify roadmap and version metadata
         shell: python
         run: |

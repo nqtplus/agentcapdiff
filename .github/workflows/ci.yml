@@ -30,4 +30,5 @@ jobs:
         run: |
           python scripts/check_release_integrity.py
           python scripts/check_release_transaction_integrity.py
+          python scripts/check_dependency_update_integrity.py --root .
       - run: agentcapdiff scan examples --policy agentcapdiff.yaml --fail-on never
