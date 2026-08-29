@@ -7,6 +7,8 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from .snapshot_semantics import validate_snapshot_semantics
+
 
 class SnapshotArtifactError(ValueError):
     """Raised when a snapshot artifact is malformed, unsafe, or exceeds a safety bound."""
@@ -318,6 +320,13 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
             raise SnapshotArtifactError(
                 f"snapshot capability_fingerprint does not match capabilities: {source}"
             )
+
+    try:
+        validate_snapshot_semantics(snapshot)
+    except ValueError as exc:
+        raise SnapshotArtifactError(
+            f"snapshot semantic inconsistency: {exc}: {source}"
+        ) from exc
 
 
 def _reject_json_constant(value: str) -> None:
