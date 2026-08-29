@@ -87,9 +87,10 @@ def _mentions_scope(value: Any, names: set[str]) -> bool:
             stack.extend(item for item in current if isinstance(item, (dict, list)))
             continue
         properties = current.get("properties")
-        if isinstance(properties, dict):
-            if any(_normalize_label(str(name)) in names for name in properties):
-                return True
+        if isinstance(properties, dict) and any(
+            _normalize_label(str(name)) in names for name in properties
+        ):
+            return True
         stack.extend(item for item in current.values() if isinstance(item, (dict, list)))
     return False
 
@@ -309,7 +310,8 @@ def infer_filesystem_scope(tool: ToolRecord) -> ScopeEvidence:
         return ScopeEvidence(
             "unknown",
             (),
-            "Path schema is optional, alternative, negative, unresolved, or otherwise not a proven finite constraint.",
+            "Path schema is optional, alternative, negative, unresolved, "
+            "or otherwise not a proven finite constraint.",
         )
 
     raw = list(schema.values) + _path_description(text)
@@ -402,7 +404,8 @@ def infer_network_scope(tool: ToolRecord) -> ScopeEvidence:
         return ScopeEvidence(
             "unknown",
             (),
-            "Network schema is optional, alternative, negative, unresolved, or otherwise not a proven finite constraint.",
+            "Network schema is optional, alternative, negative, unresolved, "
+            "or otherwise not a proven finite constraint.",
         )
 
     raw = list(schema.values) + _net_description(text)
