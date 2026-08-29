@@ -52,6 +52,18 @@ def test_capability_selectors_are_nfkc_casefolded(tmp_path: Path) -> None:
     }
 
 
+def test_duplicate_capability_aliases_canonicalize_deterministically(tmp_path: Path) -> None:
+    path = tmp_path / "policy.yml"
+    path.write_text(
+        "deny:\n"
+        "  - SHELL.EXECUTE\n"
+        "  - shell.execute\n"
+        "  - ＳＨＥＬＬ.ＥＸＥＣＵＴＥ\n",
+        encoding="utf-8",
+    )
+    assert load_policy(path).deny == {"shell.execute"}
+
+
 def test_inherited_tool_selector_alias_collision_fails_closed(tmp_path: Path) -> None:
     base = tmp_path / "base.yml"
     child = tmp_path / "policy.yml"
@@ -180,3 +192,30 @@ def test_control_format_character_in_policy_tool_selector_is_rejected(tmp_path: 
     )
     with pytest.raises(ValueError, match="control/format"):
         load_policy(path)
+
+
+def test_unsafe_runtime_tool_identity_cannot_bypass_global_deny() -> None:
+    policy = Policy(deny={"shell.execute"})
+    findings = evaluate_policy([_cap("shell.execute", "shell\u200b")], policy, 10)
+    assert [finding.rule_id for finding in findings] == ["capability.denied"]
+    assert findings[0].severity == "HIGH"
+
+
+def test_direct_policy_scope_constraint_uses_canonical_capability_identity() -> None:
+    from agentcapdiff.models import ScopeEvidence
+    from agentcapdiff.policy import ScopeConstraint
+
+    policy = Policy(
+        scope_constraints={"NETWORK.EXTERNAL": ScopeConstraint()},
+        unknown_scope="deny",
+    )
+    capability = Capability(
+        id="network.external",
+        tool="fetch",
+        risk=10,
+        reason="test",
+        scope=ScopeEvidence(kind="unknown"),
+    )
+    findings = evaluate_policy([capability], policy, 10)
+    assert [finding.rule_id for finding in findings] == ["scope.unknown"]
+    assert findings[0].severity == "HIGH"
