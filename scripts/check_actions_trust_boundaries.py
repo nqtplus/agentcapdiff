@@ -316,7 +316,10 @@ def check(root: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Verify GitHub Actions event, permission, PR, and composite Action trust boundaries."
+        description=(
+            "Verify GitHub Actions event, permission, PR, and composite Action "
+            "trust boundaries."
+        )
     )
     parser.add_argument("--root", type=Path, default=Path("."))
     args = parser.parse_args(argv)
