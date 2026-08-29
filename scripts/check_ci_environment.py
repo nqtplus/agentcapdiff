@@ -5,11 +5,13 @@ import importlib.metadata
 import json
 import os
 import platform
+import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "requirements" / "ci-environment.json"
+IMAGE_VERSION_RE = re.compile(r"^\d{8}\.\d+\.\d+$")
 
 
 def _fail(message: str) -> None:
@@ -18,23 +20,35 @@ def _fail(message: str) -> None:
 
 def _load_config() -> dict[str, object]:
     payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-    required = (
+    required_strings = (
         "runner_label",
         "runner_environment",
         "runner_os",
         "runner_arch",
         "image_os",
-        "image_version",
         "os_id",
         "os_version",
         "ambient_python",
         "ambient_pip",
         "setup_pip",
-        "setup_python_versions",
     )
-    for key in required:
-        if not payload.get(key):
-            _fail(f"missing CI environment provenance key: {key}")
+    for key in required_strings:
+        value = payload.get(key)
+        if not isinstance(value, str) or not value:
+            _fail(f"missing or invalid CI environment provenance key: {key}")
+
+    image_versions = payload.get("image_versions")
+    if not isinstance(image_versions, list) or not image_versions:
+        _fail("CI image_versions must be a non-empty reviewed allowlist")
+    for version in image_versions:
+        if not isinstance(version, str) or IMAGE_VERSION_RE.fullmatch(version) is None:
+            _fail(f"invalid reviewed CI image version: {version!r}")
+    if len(set(image_versions)) != len(image_versions):
+        _fail("CI image_versions contains a duplicate")
+
+    setup_versions = payload.get("setup_python_versions")
+    if not isinstance(setup_versions, list) or not setup_versions:
+        _fail("CI setup_python_versions must be a non-empty list")
     return payload
 
 
@@ -59,7 +73,6 @@ def check(
         "RUNNER_OS": str(config["runner_os"]),
         "RUNNER_ARCH": str(config["runner_arch"]),
         "ImageOS": str(config["image_os"]),
-        "ImageVersion": str(config["image_version"]),
     }
     observed_env: dict[str, str] = {}
     for name, expected in expected_env.items():
@@ -67,6 +80,16 @@ def check(
         if actual != expected:
             _fail(f"{name} provenance mismatch: expected {expected!r}, got {actual!r}")
         observed_env[name] = actual
+
+    actual_image = os.environ.get("ImageVersion")
+    reviewed_images = config["image_versions"]
+    assert isinstance(reviewed_images, list)
+    if actual_image not in reviewed_images:
+        _fail(
+            "ImageVersion provenance mismatch: expected one of "
+            f"{reviewed_images!r}, got {actual_image!r}"
+        )
+    observed_env["ImageVersion"] = actual_image
 
     release = _os_release()
     if release.get("ID") != config["os_id"]:
