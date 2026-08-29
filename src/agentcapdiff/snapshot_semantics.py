@@ -92,11 +92,13 @@ def _validate_capability_records(snapshot: dict[str, Any]) -> list[Capability] |
 
 
 def _scope_projection(item: dict[str, Any]) -> dict[str, Any]:
+    raw_values = item.get("values", [])
+    values = list(raw_values) if isinstance(raw_values, (list, tuple)) else raw_values
     return {
         "capability": item.get("capability"),
         "tool": item.get("tool"),
         "kind": item.get("kind"),
-        "values": list(item.get("values", [])) if isinstance(item.get("values", []), (list, tuple)) else item.get("values", []),
+        "values": values,
         "reason": item.get("reason", ""),
     }
 
@@ -295,10 +297,10 @@ def validate_snapshot_semantics(snapshot: dict[str, Any]) -> None:
     capabilities = _validate_capability_records(snapshot)
     has_capabilities = "capabilities" in snapshot
     has_tools = "tools" in snapshot
-    capability_ids = (
-        set(snapshot.get("capabilities", [])) if isinstance(snapshot.get("capabilities"), list) else set()
-    )
-    tool_names = set(snapshot.get("tools", [])) if isinstance(snapshot.get("tools"), list) else set()
+    capability_values = snapshot.get("capabilities")
+    tool_values = snapshot.get("tools")
+    capability_ids = set(capability_values) if isinstance(capability_values, list) else set()
+    tool_names = set(tool_values) if isinstance(tool_values, list) else set()
 
     if capabilities is not None:
         record_ids = {capability.id for capability in capabilities}
