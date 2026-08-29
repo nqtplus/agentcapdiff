@@ -1,0 +1,16 @@
+{
+  "tools": [
+    {
+      "name": "task_worker",
+      "description": "Process a task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "shellCommand": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}
