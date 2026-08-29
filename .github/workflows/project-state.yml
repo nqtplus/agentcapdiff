@@ -14,8 +14,30 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - run: python3 scripts/check_ci_environment.py --python-version "3.12.3" --pip-version "24.0"
+      - name: Materialize trusted base control plane
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git worktree add --detach ../agentcapdiff-trusted-base "$BASE_SHA"
+      - name: Verify runner provenance from trusted source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          CHECKER="scripts/check_ci_environment.py"
+          ARGS=(--python-version "3.12.3" --pip-version "24.0")
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python3 "../agentcapdiff-trusted-base/$CHECKER" "${ARGS[@]}"
+          else
+            python3 "$CHECKER" "${ARGS[@]}"
+          fi
       - name: Verify roadmap and version metadata
         shell: python
         run: |
@@ -91,5 +113,25 @@ jobs:
                       )
 
           print(f"project state metadata consistent: version={version}")
-      - name: Verify supply-chain integrity invariants
-        run: python scripts/check_release_integrity.py
+      - name: Verify supply-chain integrity invariants from trusted control plane
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python ../agentcapdiff-trusted-base/scripts/check_release_integrity.py --root "$GITHUB_WORKSPACE"
+          else
+            python scripts/check_release_integrity.py --root "$GITHUB_WORKSPACE"
+          fi
+      - name: Verify Actions trust-boundary invariants
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" && -f ../agentcapdiff-trusted-base/scripts/check_actions_trust_boundaries.py ]]; then
+            python ../agentcapdiff-trusted-base/scripts/check_actions_trust_boundaries.py --root "$GITHUB_WORKSPACE"
+          else
+            python scripts/check_actions_trust_boundaries.py --root "$GITHUB_WORKSPACE"
+          fi
