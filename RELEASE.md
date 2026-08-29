@@ -63,13 +63,55 @@ A hard runner termination can still prevent in-run cleanup. The next serialized 
 
 These controls reduce duplicate-run, partial-response, and workflow-retry hazards; they do not make GitHub's release service transactional or eliminate races with privileged manual/API actors. Unowned/ambiguous remote state therefore remains fail-closed rather than being auto-deleted. See `docs/release-retry-transaction.md` for the detailed state machine.
 
-## Consumer attestation verification
+## Consumer release and attestation verification
 
 Do not accept a production artifact merely because `gh attestation verify <artifact> --repo nqtplus/agentcapdiff` succeeds. Repository-only identity is intentionally broader than the release trust policy.
 
-For release verification, use `scripts/verify_release_attestations.py` from a reviewed source commit or follow the equivalent strict commands in `docs/attestation-verification.md`. The verifier checks local hashes, signed subjects, signer identity, source ref/commit, signer digest, runner class, predicate type, and the downloaded SPDX predicate before success.
+For online production verification, run `scripts/verify_release_attestations.py` from the independently reviewed source commit and add `--require-published-release`. The consumer verification must establish all of these together:
 
-The exact reviewed source commit SHA is an independent trust input. Do not derive the expected source commit solely from an unverified release artifact or from workflow-controlled predicate metadata.
+- local wheel/source bytes match `SHA256SUMS`;
+- SPDX metadata matches those exact bytes;
+- provenance and SPDX attestations bind the exact repository, signer workflow, source ref, source commit, signer digest, runner class, and predicate type;
+- the observed GitHub Release is published, non-prerelease, and immutable;
+- the release contains exactly the expected four assets and the exact-source ownership marker;
+- the current release tag still resolves to the independently reviewed source SHA;
+- that source commit remains on the current `main` history.
+
+Example:
+
+```bash
+python scripts/verify_release_attestations.py \
+  --tag v1.0.0 \
+  --source-sha <reviewed-40-character-source-commit> \
+  --dist-dir ./release-download \
+  --checksums ./release-download/SHA256SUMS \
+  --sbom ./release-download/agentcapdiff.spdx.json \
+  --require-published-release
+```
+
+The exact reviewed source commit SHA is an independent trust input. Do not derive it solely from an unverified release artifact, tag name, release body, or workflow-controlled predicate metadata. If published-release or tag state cannot be verified, treat it as `UNKNOWN`, not safe.
+
+Producer-side prepublication self-verification deliberately omits `--require-published-release` because the GitHub Release does not exist yet; the workflow later requires GitHub to mark the published release immutable.
+
+## Verified production installation
+
+A verified package artifact can still lose its provenance boundary if ordinary `pip` dependency resolution is allowed to fetch new, unreviewed bytes during installation.
+
+For the reviewed Linux X64 / CPython 3.11–3.13 Action runtime, first install the exact SHA-256-locked runtime dependency set from `requirements/action-runtime-lock.txt`, then install the already-verified AgentCapDiff wheel with `--no-deps`, and finish with `pip check`:
+
+```bash
+python -m pip --isolated --disable-pip-version-check install \
+  --require-hashes --no-deps --no-cache-dir --only-binary=:all: \
+  --index-url=https://pypi.org/simple \
+  -r requirements/action-runtime-lock.txt
+
+python -m pip --isolated --disable-pip-version-check install \
+  --no-deps ./release-download/agentcapdiff-1.0.0-py3-none-any.whl
+
+python -m pip check
+```
+
+For another supported local platform/interpreter, use an equivalent organization-reviewed dependency lock with exact hashes. Do not relax hash verification or silently re-enable dynamic dependency resolution if an appropriate lock is unavailable; that installation state remains `UNKNOWN`.
 
 ## Production pinning
 
@@ -79,10 +121,12 @@ For the composite GitHub Action, a reviewed full commit SHA is the strongest sou
 - uses: nqtplus/agentcapdiff@<reviewed-full-commit-sha>
 ```
 
-A reviewed verified immutable release tag may also be used where that release, checksums, SBOM, and strict attestations have been verified. Do not rely on `@main` for production. Never move or reuse a released version tag.
+A reviewed verified immutable release tag may also be used where that release, checksums, SBOM, strict attestations, current tag binding, and exact source SHA have been verified. Do not rely on `@main` for production. Never move or reuse a released version tag.
+
+For CLI/package installation, floating VCS sources such as `git+https://github.com/nqtplus/agentcapdiff.git`, unverified tags, or a package-index name/version alone are evaluation/development conveniences rather than high-assurance production provenance.
 
 ## Historical v0.9 release gate
 
 v0.9 established the supply-chain baseline carried into 1.x: exact Action/dependency pins, benchmark/release-integrity gates, SPDX SBOM, checksums, attestations, least-privilege workflow permissions, immutable release enforcement, and parser/path/output/CI trust-boundary review.
 
-See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, `docs/release-integrity.md` for the complete release trust model, `docs/attestation-verification.md` for strict attestation verification and replay/misbinding resistance, and `docs/release-retry-transaction.md` for release retry/idempotency behavior.
+See `docs/stability-v1.0.md` for 1.x compatibility guarantees, `docs/v1.0-verification.md` for the stable-release evidence map, `docs/release-integrity.md` for the complete release trust model, `docs/attestation-verification.md` for strict attestation/release-state verification and replay/misbinding resistance, and `docs/release-retry-transaction.md` for release retry/idempotency behavior.

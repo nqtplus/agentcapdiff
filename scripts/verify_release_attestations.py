@@ -94,6 +94,14 @@ def _expected_artifact_names(tag: str) -> tuple[str, str]:
     )
 
 
+def _expected_release_asset_names(tag: str) -> set[str]:
+    return {
+        *_expected_artifact_names(tag),
+        "SHA256SUMS",
+        "agentcapdiff.spdx.json",
+    }
+
+
 def _parse_checksums(path: Path, expected_names: set[str]) -> dict[str, str]:
     try:
         text = _read_regular_bytes(path, limit=1024 * 1024).decode("utf-8")
@@ -199,16 +207,126 @@ def _verification_command(
     return command
 
 
-def _run_verification(command: list[str]) -> list[dict[str, Any]]:
+def _run_subprocess(command: list[str], *, label: str) -> str:
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=False)
     except OSError as exc:
-        raise ReleaseVerificationError(f"cannot execute GitHub CLI: {exc}") from exc
+        raise ReleaseVerificationError(f"cannot execute {label}: {exc}") from exc
     if result.returncode != 0:
         diagnostic = (result.stderr or result.stdout).strip()[-MAX_ERROR_CHARS:]
-        raise ReleaseVerificationError(f"GitHub attestation verification failed: {diagnostic}")
+        raise ReleaseVerificationError(f"{label} failed: {diagnostic}")
+    return result.stdout
+
+
+def _run_gh_json(args: list[str]) -> Any:
+    output = _run_subprocess(["gh", *args], label="GitHub CLI release-state query")
     try:
-        payload = json.loads(result.stdout)
+        return json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ReleaseVerificationError("GitHub release-state query returned invalid JSON") from exc
+
+
+def _run_gh_text(args: list[str]) -> str:
+    return _run_subprocess(["gh", *args], label="GitHub CLI release-state query").strip()
+
+
+def _validate_published_release_state(
+    release: dict[str, Any],
+    *,
+    tag: str,
+    source_sha: str,
+    tag_sha: str,
+    main_relation: str,
+) -> None:
+    if release.get("tagName") != tag:
+        raise ReleaseVerificationError("published release tag does not match requested tag")
+    if release.get("isDraft") is not False:
+        raise ReleaseVerificationError("published release is still a draft")
+    if release.get("isPrerelease") is not False:
+        raise ReleaseVerificationError("production release must not be a prerelease")
+    if release.get("isImmutable") is not True:
+        raise ReleaseVerificationError("GitHub does not report the release as immutable")
+
+    marker = f"<!-- agentcapdiff-release-source:{source_sha} -->"
+    body = release.get("body")
+    if not isinstance(body, str) or marker not in body:
+        raise ReleaseVerificationError("immutable release lacks the exact-source ownership marker")
+
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        raise ReleaseVerificationError("published release assets are missing or malformed")
+    names: list[str] = []
+    for asset in assets:
+        if not isinstance(asset, dict) or not isinstance(asset.get("name"), str):
+            raise ReleaseVerificationError("published release contains a malformed asset record")
+        name = asset["name"]
+        if Path(name).name != name or name in names:
+            raise ReleaseVerificationError(
+                f"invalid or duplicate published release asset: {name!r}"
+            )
+        names.append(name)
+
+    expected_assets = _expected_release_asset_names(tag)
+    if set(names) != expected_assets:
+        raise ReleaseVerificationError(
+            "published release asset set mismatch: "
+            f"expected={sorted(expected_assets)!r}, got={sorted(names)!r}"
+        )
+
+    if tag_sha != source_sha:
+        raise ReleaseVerificationError(
+            f"release tag resolves to {tag_sha!r}, expected reviewed source {source_sha}"
+        )
+    if main_relation not in {"ahead", "identical"}:
+        raise ReleaseVerificationError(
+            "reviewed release source is not on the current main history: "
+            f"compare status={main_relation!r}"
+        )
+
+
+def verify_published_release_state(*, tag: str, source_sha: str) -> None:
+    _release_version(tag)
+    if SHA_RE.fullmatch(source_sha) is None:
+        raise ReleaseVerificationError("source SHA must be an exact 40-character Git commit")
+
+    release = _run_gh_json(
+        [
+            "release",
+            "view",
+            tag,
+            "--repo",
+            REPOSITORY,
+            "--json",
+            "tagName,isDraft,isPrerelease,isImmutable,body,assets",
+        ]
+    )
+    if not isinstance(release, dict):
+        raise ReleaseVerificationError("GitHub release-state query returned a malformed release")
+
+    tag_sha = _run_gh_text(
+        ["api", f"repos/{REPOSITORY}/commits/{tag}", "--jq", ".sha"]
+    )
+    main_relation = _run_gh_text(
+        [
+            "api",
+            f"repos/{REPOSITORY}/compare/{source_sha}...main",
+            "--jq",
+            ".status",
+        ]
+    )
+    _validate_published_release_state(
+        release,
+        tag=tag,
+        source_sha=source_sha,
+        tag_sha=tag_sha,
+        main_relation=main_relation,
+    )
+
+
+def _run_verification(command: list[str]) -> list[dict[str, Any]]:
+    output = _run_subprocess(command, label="GitHub attestation verification")
+    try:
+        payload = json.loads(output)
     except json.JSONDecodeError as exc:
         raise ReleaseVerificationError(
             "GitHub attestation verification returned invalid JSON"
@@ -350,8 +468,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sbom", type=Path, default=Path("release/agentcapdiff.spdx.json"))
     parser.add_argument("--provenance-bundle", type=Path)
     parser.add_argument("--sbom-bundle", type=Path)
+    parser.add_argument(
+        "--require-published-release",
+        action="store_true",
+        help=(
+            "Also require the current GitHub Release to be published, immutable, exact-source, "
+            "and bound to the expected asset set/tag/main history."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
+        if args.require_published_release:
+            verify_published_release_state(tag=args.tag, source_sha=args.source_sha)
         verify_release(
             tag=args.tag,
             source_sha=args.source_sha,
@@ -364,9 +492,10 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ReleaseVerificationError) as exc:
         print(f"release-attestation: FAIL: {exc}", file=sys.stderr)
         return 1
+    published = "verified" if args.require_published_release else "not-checked"
     print(
         "release-attestation: PASS "
-        f"repo={REPOSITORY} tag={args.tag} source={args.source_sha}"
+        f"repo={REPOSITORY} tag={args.tag} source={args.source_sha} published={published}"
     )
     return 0
 

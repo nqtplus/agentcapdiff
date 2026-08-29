@@ -18,6 +18,22 @@ VERIFIER = runpy.run_path(
 )
 
 
+def _published_release(source_sha: str = "a" * 40) -> dict[str, object]:
+    return {
+        "tagName": "v1.0.0",
+        "isDraft": False,
+        "isPrerelease": False,
+        "isImmutable": True,
+        "body": f"<!-- agentcapdiff-release-source:{source_sha} -->\nRelease notes",
+        "assets": [
+            {"name": "agentcapdiff-1.0.0-py3-none-any.whl"},
+            {"name": "agentcapdiff-1.0.0.tar.gz"},
+            {"name": "SHA256SUMS"},
+            {"name": "agentcapdiff.spdx.json"},
+        ],
+    }
+
+
 def test_attestation_integrity_contract_passes_for_repository():
     result = subprocess.run(
         [sys.executable, "scripts/check_attestation_integrity.py"],
@@ -62,6 +78,23 @@ def test_attestation_contract_rejects_missing_prepublication_verifier(tmp_path: 
         check_release_workflow(tmp_path)
 
 
+def test_attestation_contract_keeps_published_state_check_out_of_prepublication_flow(
+    tmp_path: pathlib.Path,
+):
+    workflow_dir = tmp_path / ".github" / "workflows"
+    workflow_dir.mkdir(parents=True)
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    release = release.replace(
+        '--source-sha "$GITHUB_SHA"',
+        '--source-sha "$GITHUB_SHA" \\\n            --require-published-release',
+        1,
+    )
+    (workflow_dir / "release.yml").write_text(release, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not exist yet"):
+        CHECKER["_check_release_workflow"](tmp_path)
+
+
 def test_verification_command_pins_repo_workflow_ref_commit_runner_and_predicate():
     command = VERIFIER["_verification_command"](
         pathlib.Path("dist/agentcapdiff-1.0.0-py3-none-any.whl"),
@@ -83,6 +116,75 @@ def test_verification_command_pins_repo_workflow_ref_commit_runner_and_predicate
     assert "--deny-self-hosted-runners" in command
     assert "--predicate-type https://slsa.dev/provenance/v1" in joined
     assert "--bundle bundle.jsonl" in joined
+
+
+def test_published_release_state_accepts_exact_immutable_binding():
+    source_sha = "a" * 40
+    VERIFIER["_validate_published_release_state"](
+        _published_release(source_sha),
+        tag="v1.0.0",
+        source_sha=source_sha,
+        tag_sha=source_sha,
+        main_relation="ahead",
+    )
+
+
+def test_published_release_state_rejects_mutable_release():
+    source_sha = "a" * 40
+    release = _published_release(source_sha)
+    release["isImmutable"] = False
+
+    with pytest.raises(ValueError, match="immutable"):
+        VERIFIER["_validate_published_release_state"](
+            release,
+            tag="v1.0.0",
+            source_sha=source_sha,
+            tag_sha=source_sha,
+            main_relation="ahead",
+        )
+
+
+def test_published_release_state_rejects_tag_source_mismatch():
+    source_sha = "a" * 40
+
+    with pytest.raises(ValueError, match="release tag resolves"):
+        VERIFIER["_validate_published_release_state"](
+            _published_release(source_sha),
+            tag="v1.0.0",
+            source_sha=source_sha,
+            tag_sha="b" * 40,
+            main_relation="ahead",
+        )
+
+
+def test_published_release_state_rejects_unexpected_asset():
+    source_sha = "a" * 40
+    release = _published_release(source_sha)
+    assets = release["assets"]
+    assert isinstance(assets, list)
+    assets.append({"name": "unexpected.bin"})
+
+    with pytest.raises(ValueError, match="asset set mismatch"):
+        VERIFIER["_validate_published_release_state"](
+            release,
+            tag="v1.0.0",
+            source_sha=source_sha,
+            tag_sha=source_sha,
+            main_relation="ahead",
+        )
+
+
+def test_published_release_state_rejects_source_outside_current_main_history():
+    source_sha = "a" * 40
+
+    with pytest.raises(ValueError, match="not on the current main history"):
+        VERIFIER["_validate_published_release_state"](
+            _published_release(source_sha),
+            tag="v1.0.0",
+            source_sha=source_sha,
+            tag_sha=source_sha,
+            main_relation="diverged",
+        )
 
 
 def test_checksum_manifest_rejects_path_subject(tmp_path: pathlib.Path):
