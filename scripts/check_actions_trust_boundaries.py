@@ -188,7 +188,7 @@ def _check_trusted_integrity_gate(path: Path, checker_names: tuple[str, ...]) ->
             "BASE_SHA: ${{ github.event.pull_request.base.sha }}",
             'git worktree add --detach ../agentcapdiff-trusted-base "$BASE_SHA"',
             "EVENT_NAME: ${{ github.event_name }}",
-            'if [[ "$EVENT_NAME" == "pull_request" ]]; then',
+            'if [[ "$EVENT_NAME" == "pull_request"',
             "GITHUB_WORKSPACE",
         ),
         path.name,
@@ -224,7 +224,11 @@ def check(root: Path) -> None:
     _check_read_only_candidate_execution(workflow_dir / "ci.yml")
     _check_trusted_integrity_gate(
         workflow_dir / "project-state.yml",
-        ("check_release_integrity.py", "check_actions_trust_boundaries.py"),
+        (
+            "check_release_integrity.py",
+            "check_actions_trust_boundaries.py",
+            "check_dependency_update_integrity.py",
+        ),
     )
     _check_trusted_integrity_gate(
         workflow_dir / "release-integrity.yml",
@@ -233,6 +237,7 @@ def check(root: Path) -> None:
             "check_attestation_integrity.py",
             "check_release_transaction_integrity.py",
             "check_actions_trust_boundaries.py",
+            "check_dependency_update_integrity.py",
         ),
     )
 
