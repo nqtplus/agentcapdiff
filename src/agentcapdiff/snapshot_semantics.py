@@ -29,9 +29,9 @@ def _require_string(value: Any, field: str, *, non_empty: bool = False) -> str:
 
 
 def _require_string_list(value: Any, field: str) -> list[str]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
         raise ValueError(f"{field} must be a list of strings")
-    return value
+    return list(value)
 
 
 def _validate_capability_records(snapshot: dict[str, Any]) -> list[Capability] | None:
@@ -96,7 +96,7 @@ def _scope_projection(item: dict[str, Any]) -> dict[str, Any]:
         "capability": item.get("capability"),
         "tool": item.get("tool"),
         "kind": item.get("kind"),
-        "values": item.get("values", []),
+        "values": list(item.get("values", [])) if isinstance(item.get("values", []), (list, tuple)) else item.get("values", []),
         "reason": item.get("reason", ""),
     }
 
@@ -106,6 +106,9 @@ def _validate_scopes(
     capabilities: list[Capability] | None,
     capability_ids: set[str],
     tool_names: set[str],
+    *,
+    has_capabilities: bool,
+    has_tools: bool,
 ) -> None:
     raw = snapshot.get("scopes")
     if raw is None:
@@ -118,9 +121,9 @@ def _validate_scopes(
         prefix = f"scopes[{index}]"
         capability = _require_string(item.get("capability"), f"{prefix}.capability", non_empty=True)
         tool = _require_string(item.get("tool"), f"{prefix}.tool", non_empty=True)
-        if capability_ids and capability not in capability_ids:
+        if has_capabilities and capability not in capability_ids:
             raise ValueError(f"{prefix} references capability absent from capabilities")
-        if tool_names and tool not in tool_names:
+        if has_tools and tool not in tool_names:
             raise ValueError(f"{prefix} references tool absent from tools")
 
         projection = _scope_projection(item)
@@ -210,6 +213,9 @@ def _validate_graph(
     capabilities: list[Capability] | None,
     capability_ids: set[str],
     tool_names: set[str],
+    *,
+    has_capabilities: bool,
+    has_tools: bool,
 ) -> None:
     graph = snapshot.get("capability_graph")
     if graph is None:
@@ -219,25 +225,25 @@ def _validate_graph(
     projection = _graph_projection(graph)
 
     for index, node in enumerate(projection["nodes"]):
-        if capability_ids and node["capability"] not in capability_ids:
+        if has_capabilities and node["capability"] not in capability_ids:
             raise ValueError(
                 f"capability_graph.nodes[{index}] references capability absent from capabilities"
             )
-        if tool_names and not set(node["tools"]).issubset(tool_names):
+        if has_tools and not set(node["tools"]).issubset(tool_names):
             raise ValueError(f"capability_graph.nodes[{index}] references tool absent from tools")
     for index, edge in enumerate(projection["edges"]):
-        if capability_ids and (
+        if has_capabilities and (
             edge["source"] not in capability_ids or edge["target"] not in capability_ids
         ):
             raise ValueError(
                 f"capability_graph.edges[{index}] references capability absent from capabilities"
             )
     for index, path in enumerate(projection["paths"]):
-        if capability_ids and not set(path["capabilities"]).issubset(capability_ids):
+        if has_capabilities and not set(path["capabilities"]).issubset(capability_ids):
             raise ValueError(
                 f"capability_graph.paths[{index}] references capability absent from capabilities"
             )
-        if tool_names and not set(path["tools"]).issubset(tool_names):
+        if has_tools and not set(path["tools"]).issubset(tool_names):
             raise ValueError(f"capability_graph.paths[{index}] references tool absent from tools")
 
     if capabilities is None:
@@ -248,7 +254,12 @@ def _validate_graph(
 
 
 def _validate_findings(
-    snapshot: dict[str, Any], capability_ids: set[str], tool_names: set[str]
+    snapshot: dict[str, Any],
+    capability_ids: set[str],
+    tool_names: set[str],
+    *,
+    has_capabilities: bool,
+    has_tools: bool,
 ) -> None:
     findings = snapshot.get("findings")
     if findings is None:
@@ -260,9 +271,9 @@ def _validate_findings(
     for index, item in enumerate(findings):
         capability = item.get("capability")
         tool = item.get("tool")
-        if capability is not None and capability_ids and capability not in capability_ids:
+        if capability is not None and has_capabilities and capability not in capability_ids:
             raise ValueError(f"findings[{index}] references capability absent from capabilities")
-        if tool is not None and tool_names and tool not in tool_names:
+        if tool is not None and has_tools and tool not in tool_names:
             raise ValueError(f"findings[{index}] references tool absent from tools")
         severity = item.get("severity", "INFO")
         if isinstance(severity, str) and severity in _SEVERITY_ORDER:
@@ -282,17 +293,19 @@ def validate_snapshot_semantics(snapshot: dict[str, Any]) -> None:
     """
 
     capabilities = _validate_capability_records(snapshot)
-    capability_ids = set(snapshot.get("capabilities", [])) if isinstance(
-        snapshot.get("capabilities"), list
-    ) else set()
+    has_capabilities = "capabilities" in snapshot
+    has_tools = "tools" in snapshot
+    capability_ids = (
+        set(snapshot.get("capabilities", [])) if isinstance(snapshot.get("capabilities"), list) else set()
+    )
     tool_names = set(snapshot.get("tools", [])) if isinstance(snapshot.get("tools"), list) else set()
 
     if capabilities is not None:
         record_ids = {capability.id for capability in capabilities}
-        if "capabilities" in snapshot and capability_ids != record_ids:
+        if has_capabilities and capability_ids != record_ids:
             raise ValueError("capabilities do not match capability_records")
         record_tools = {capability.tool for capability in capabilities}
-        if "tools" in snapshot and not record_tools.issubset(tool_names):
+        if has_tools and not record_tools.issubset(tool_names):
             raise ValueError("capability_records reference tools absent from tools")
 
         if "risk_score" in snapshot:
@@ -303,6 +316,26 @@ def validate_snapshot_semantics(snapshot: dict[str, Any]) -> None:
             if snapshot.get("risk_score") != expected_risk:
                 raise ValueError("risk_score does not match capability_records")
 
-    _validate_scopes(snapshot, capabilities, capability_ids, tool_names)
-    _validate_graph(snapshot, capabilities, capability_ids, tool_names)
-    _validate_findings(snapshot, capability_ids, tool_names)
+    _validate_scopes(
+        snapshot,
+        capabilities,
+        capability_ids,
+        tool_names,
+        has_capabilities=has_capabilities,
+        has_tools=has_tools,
+    )
+    _validate_graph(
+        snapshot,
+        capabilities,
+        capability_ids,
+        tool_names,
+        has_capabilities=has_capabilities,
+        has_tools=has_tools,
+    )
+    _validate_findings(
+        snapshot,
+        capability_ids,
+        tool_names,
+        has_capabilities=has_capabilities,
+        has_tools=has_tools,
+    )
