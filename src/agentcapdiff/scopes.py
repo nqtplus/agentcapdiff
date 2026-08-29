@@ -3,6 +3,7 @@ from __future__ import annotations
 import posixpath
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -20,6 +21,13 @@ PATH_NAMES = {
     "allowed_path",
     "allowed_paths",
     "base_path",
+    "destination_path",
+    "input_path",
+    "output_path",
+    "read_path",
+    "source_path",
+    "target_path",
+    "write_path",
 }
 NET_NAMES = {
     "url",
@@ -34,9 +42,26 @@ NET_NAMES = {
     "base_url",
     "allowed_domains",
     "allowed_hosts",
+    "destination_url",
+    "remote_url",
+    "request_url",
+    "target_url",
+    "webhook_url",
 }
-LITERALS = {"const", "enum", "default", "examples"}
 DYNAMIC = ("${", "{{", "}}", "<", ">")
+
+
+@dataclass(frozen=True)
+class _ConstraintEvidence:
+    values: tuple[str, ...] = ()
+    mentioned: bool = False
+    ambiguous: bool = False
+
+
+def _normalize_label(value: str) -> str:
+    value = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", value)
+    value = re.sub(r"[^A-Za-z0-9]+", "_", value)
+    return value.strip("_").lower()
 
 
 def _strings(value: Any) -> list[str]:
@@ -47,40 +72,195 @@ def _strings(value: Any) -> list[str]:
     return []
 
 
-def _literals(schema: dict[str, Any] | None, names: set[str]) -> list[str]:
-    if not schema:
-        return []
-    out: list[str] = []
-    stack: list[tuple[Any, str | None]] = [(schema, None)]
+def _mentions_scope(value: Any, names: set[str]) -> bool:
+    stack = [value]
     seen: set[int] = set()
     while stack:
-        current, context = stack.pop()
+        current = stack.pop()
         if not isinstance(current, (dict, list)):
             continue
-        if id(current) in seen:
+        object_id = id(current)
+        if object_id in seen:
             continue
-        seen.add(id(current))
+        seen.add(object_id)
         if isinstance(current, list):
-            stack.extend(
-                (item, context)
-                for item in current
-                if isinstance(item, (dict, list))
-            )
+            stack.extend(item for item in current if isinstance(item, (dict, list)))
             continue
-        for key, value in current.items():
-            key_l = str(key).lower()
-            if key_l == "properties" and isinstance(value, dict):
-                stack.extend(
-                    (child, str(name).lower())
-                    for name, child in value.items()
-                    if isinstance(child, (dict, list))
-                )
+        properties = current.get("properties")
+        if isinstance(properties, dict):
+            if any(_normalize_label(str(name)) in names for name in properties):
+                return True
+        stack.extend(item for item in current.values() if isinstance(item, (dict, list)))
+    return False
+
+
+def _finite_literals(schema: dict[str, Any]) -> tuple[str, ...]:
+    values: list[str] = []
+    if "const" in schema:
+        values.extend(_strings(schema.get("const")))
+    if "enum" in schema:
+        values.extend(_strings(schema.get("enum")))
+    return tuple(sorted(set(values)))
+
+
+def _value_constraints(schema: Any, active: set[int] | None = None) -> _ConstraintEvidence:
+    if not isinstance(schema, dict):
+        return _ConstraintEvidence(mentioned=True, ambiguous=True)
+
+    active = set() if active is None else active
+    object_id = id(schema)
+    if object_id in active:
+        return _ConstraintEvidence(mentioned=True, ambiguous=True)
+    active.add(object_id)
+    try:
+        hard_values = set(_finite_literals(schema))
+
+        all_of = schema.get("allOf")
+        if isinstance(all_of, list):
+            for branch in all_of:
+                evidence = _value_constraints(branch, active)
+                if evidence.values:
+                    hard_values.update(evidence.values)
+
+        items = schema.get("items")
+        if isinstance(items, dict):
+            evidence = _value_constraints(items, active)
+            if evidence.values:
+                hard_values.update(evidence.values)
+
+        # Any unconditional finite upper bound is conservative even when another
+        # conjunctive keyword is dynamic or unresolved.
+        if hard_values:
+            return _ConstraintEvidence(tuple(sorted(hard_values)), True, False)
+
+        for keyword in ("anyOf", "oneOf"):
+            branches = schema.get(keyword)
+            if not isinstance(branches, list) or not branches:
                 continue
-            if context in names and key_l in LITERALS:
-                out.extend(_strings(value))
-            if isinstance(value, (dict, list)):
-                stack.append((value, key_l if key_l in names else context))
-    return out
+            evidence = [_value_constraints(branch, active) for branch in branches]
+            if all(item.values and not item.ambiguous for item in evidence):
+                values = tuple(sorted({value for item in evidence for value in item.values}))
+                return _ConstraintEvidence(values, True, False)
+            return _ConstraintEvidence(mentioned=True, ambiguous=True)
+
+        if "if" in schema:
+            branches = [schema.get("then"), schema.get("else")]
+            if all(isinstance(branch, dict) for branch in branches):
+                evidence = [_value_constraints(branch, active) for branch in branches]
+                if all(item.values and not item.ambiguous for item in evidence):
+                    values = tuple(sorted({value for item in evidence for value in item.values}))
+                    return _ConstraintEvidence(values, True, False)
+            return _ConstraintEvidence(mentioned=True, ambiguous=True)
+
+        # `not`, unresolved `$ref`, patterns, formats, defaults and examples do not
+        # establish a finite authorization boundary by themselves.
+        return _ConstraintEvidence(mentioned=True, ambiguous=True)
+    finally:
+        active.remove(object_id)
+
+
+def _merge_schema_evidence(parts: list[_ConstraintEvidence]) -> _ConstraintEvidence:
+    mentioned = any(part.mentioned for part in parts)
+    ambiguous = any(part.ambiguous for part in parts)
+    values = tuple(sorted({value for part in parts for value in part.values}))
+    return _ConstraintEvidence(values, mentioned, ambiguous)
+
+
+def _alternative_schema_evidence(
+    branches: list[Any],
+    names: set[str],
+    active: set[int],
+) -> _ConstraintEvidence:
+    evidence = [_schema_constraints(branch, names, active) for branch in branches]
+    if not any(item.mentioned for item in evidence):
+        return _ConstraintEvidence()
+    if all(item.mentioned and item.values and not item.ambiguous for item in evidence):
+        values = tuple(sorted({value for item in evidence for value in item.values}))
+        return _ConstraintEvidence(values, True, False)
+    return _ConstraintEvidence(mentioned=True, ambiguous=True)
+
+
+def _schema_constraints(
+    schema: Any,
+    names: set[str],
+    active: set[int] | None = None,
+) -> _ConstraintEvidence:
+    if not isinstance(schema, dict):
+        return _ConstraintEvidence()
+
+    active = set() if active is None else active
+    object_id = id(schema)
+    if object_id in active:
+        return _ConstraintEvidence(mentioned=True, ambiguous=True)
+    active.add(object_id)
+    try:
+        parts: list[_ConstraintEvidence] = []
+
+        # A root reference can replace the whole input schema. AgentCapDiff does not
+        # resolve arbitrary references, so a reassuring description cannot turn it
+        # into a proven restriction.
+        if "$ref" in schema:
+            parts.append(_ConstraintEvidence(mentioned=True, ambiguous=True))
+
+        properties = schema.get("properties")
+        if isinstance(properties, dict):
+            for name, child in properties.items():
+                normalized = _normalize_label(str(name))
+                if normalized in names:
+                    parts.append(_value_constraints(child, active))
+                elif isinstance(child, dict):
+                    nested = _schema_constraints(child, names, active)
+                    if nested.mentioned:
+                        parts.append(nested)
+
+        all_of = schema.get("allOf")
+        if isinstance(all_of, list):
+            parts.extend(
+                evidence
+                for branch in all_of
+                if (evidence := _schema_constraints(branch, names, active)).mentioned
+            )
+
+        for keyword in ("anyOf", "oneOf"):
+            branches = schema.get(keyword)
+            if isinstance(branches, list) and branches:
+                alternative = _alternative_schema_evidence(branches, names, active)
+                if alternative.mentioned:
+                    parts.append(alternative)
+
+        items = schema.get("items")
+        if isinstance(items, dict):
+            nested = _schema_constraints(items, names, active)
+            if nested.mentioned:
+                parts.append(nested)
+
+        if "if" in schema:
+            condition_mentions = _mentions_scope(schema.get("if"), names)
+            then_branch = schema.get("then")
+            else_branch = schema.get("else")
+            conditional = _alternative_schema_evidence(
+                [then_branch, else_branch],
+                names,
+                active,
+            )
+            if conditional.mentioned:
+                parts.append(conditional)
+            elif condition_mentions:
+                parts.append(_ConstraintEvidence(mentioned=True, ambiguous=True))
+
+        negative = schema.get("not")
+        if _mentions_scope(negative, names):
+            parts.append(_ConstraintEvidence(mentioned=True, ambiguous=True))
+
+        dependent = schema.get("dependentSchemas")
+        if _mentions_scope(dependent, names):
+            parts.append(_ConstraintEvidence(mentioned=True, ambiguous=True))
+
+        # `$defs`/`definitions` are deliberately not traversed: an unused definition
+        # is not an applied authorization constraint.
+        return _merge_schema_evidence(parts)
+    finally:
+        active.remove(object_id)
 
 
 def _path_description(text: str) -> list[str]:
@@ -123,7 +303,16 @@ def infer_filesystem_scope(tool: ToolRecord) -> ScopeEvidence:
             ("/**",),
             "Description explicitly permits arbitrary paths.",
         )
-    raw = _literals(tool.input_schema, PATH_NAMES) + _path_description(text)
+
+    schema = _schema_constraints(tool.input_schema, PATH_NAMES)
+    if schema.mentioned and schema.ambiguous:
+        return ScopeEvidence(
+            "unknown",
+            (),
+            "Path schema is optional, alternative, negative, unresolved, or otherwise not a proven finite constraint.",
+        )
+
+    raw = list(schema.values) + _path_description(text)
     if not raw:
         return ScopeEvidence()
     values: list[str] = []
@@ -207,7 +396,16 @@ def infer_network_scope(tool: ToolRecord) -> ScopeEvidence:
             ("*",),
             "Description explicitly permits arbitrary destinations.",
         )
-    raw = _literals(tool.input_schema, NET_NAMES) + _net_description(text)
+
+    schema = _schema_constraints(tool.input_schema, NET_NAMES)
+    if schema.mentioned and schema.ambiguous:
+        return ScopeEvidence(
+            "unknown",
+            (),
+            "Network schema is optional, alternative, negative, unresolved, or otherwise not a proven finite constraint.",
+        )
+
+    raw = list(schema.values) + _net_description(text)
     if not raw:
         return ScopeEvidence()
     values: list[str] = []
@@ -246,7 +444,8 @@ def _covers(head: str, base: str) -> bool:
     if head == base:
         return True
     if head.endswith("/**"):
-        return base.startswith(head[:-3].rstrip("/") + "/")
+        prefix = head[:-3].rstrip("/")
+        return base == prefix or base.startswith(prefix + "/")
     if head.startswith("*."):
         suffix = head[1:].lower()
         candidate = base.lower()
@@ -273,6 +472,19 @@ def scope_is_expansion(base: dict[str, Any], head: dict[str, Any]) -> bool:
     if after > before:
         return True
     return all(any(_covers(h, b) for h in after) for b in before)
+
+
+def scope_uncertainty_increased(base: dict[str, Any], head: dict[str, Any]) -> bool:
+    """Return true when a previously proven restriction becomes unknown.
+
+    This is intentionally separate from `scope_is_expansion`: unknown evidence does
+    not prove runtime broadening, but losing a finite static bound still requires
+    explicit reviewer attention.
+    """
+
+    return str(base.get("kind", "unknown")) == "restricted" and str(
+        head.get("kind", "unknown")
+    ) == "unknown"
 
 
 def scope_records(capabilities: Iterable[Any]) -> list[dict[str, Any]]:
