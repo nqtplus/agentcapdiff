@@ -50,6 +50,12 @@ Ambiguous `args_schema` input is still analyzed for capability and scope evidenc
 
 Adapters may add evidence but must not weaken normalized privilege meaning. Equivalent supported tool definitions must normalize to the same capability ID, risk class, policy decision, and conservative scope classification.
 
+Capability inference does not rely only on a tool's display name and top-level description. Static input-schema titles/descriptions and a deliberately narrow set of security-relevant property/action signals are also reviewed. This prevents a benign-looking name from hiding an explicit schema such as `shellCommand`, `apiToken`, `path + content`, or `repository + operation=merge`.
+
+Schema-only inference is intentionally conservative: it is recorded at `low` confidence unless independent name/description evidence also exists. Generic fields that are too ambiguous to establish an operation are not promoted into stronger claims merely to increase coverage; for example, a bare `url` parameter alone is not treated as proof of network access.
+
+When the same `(tool name, source file)` is discovered through multiple serialized shapes, AgentCapDiff merges the static descriptions/schema branches instead of letting traversal order choose one record and silently discard the others. Conflicting adapter attribution becomes `generic`, preserving uncertainty while retaining the union of static capability/scope evidence.
+
 If a framework exposes dynamic, incomplete, or ambiguous permissions, the adapter must preserve that uncertainty. In particular, unknown scope stays `unknown`; it must never be converted to `restricted` merely because a framework-specific field is missing or unsupported.
 
 ## Adapter conformance gate
@@ -63,11 +69,13 @@ The v0.3 conformance suite expresses equivalent filesystem and external-network 
 5. an existing deny-policy decision cannot become weaker merely because the same privilege is represented by another framework;
 6. ambiguous framework attribution remains generic instead of being guessed.
 
+Post-v1.0 security regressions additionally cover schema-hidden high-risk signals and duplicate-shape collisions so a supported static representation cannot downgrade a dangerous capability simply by moving evidence out of the display name/description or by colliding on the same tool name/source.
+
 This is a semantic conformance test, not a claim that every possible SDK object or runtime configuration is recognized.
 
 ## Confidence
 
-The current classifier uses conservative qualitative confidence values: `low`, `medium`, or `high`. Recognized static adapter metadata receives `medium` classification confidence; ambiguous/generic tool shapes receive `low`. Confidence describes the evidence quality for the classification, not whether runtime behavior is safe.
+The current classifier uses conservative qualitative confidence values: `low`, `medium`, or `high`. Recognized static adapter metadata with direct name/description evidence receives `medium` classification confidence; ambiguous/generic tool shapes and schema-only operational inference receive `low`. Confidence describes the evidence quality for the classification, not whether runtime behavior is safe.
 
 ## Canonicalization
 
