@@ -18,6 +18,12 @@
       "path": "fixtures/ambiguous-network",
       "expected_capabilities": ["network.external"],
       "expected_high_risk": []
+    },
+    {
+      "name": "adversarial-schema-hidden-shell",
+      "path": "fixtures/adversarial-schema-hidden-shell",
+      "expected_capabilities": ["shell.execute"],
+      "expected_high_risk": ["shell.execute"]
     }
   ]
 }
