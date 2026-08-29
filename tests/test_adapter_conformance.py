@@ -21,6 +21,10 @@ DYNAMIC_PATH_SCHEMA = {
     "type": "object",
     "properties": {"path": {"type": "string"}},
 }
+SHELL_SCHEMA = {
+    "type": "object",
+    "properties": {"shellCommand": {"type": "string"}},
+}
 
 
 def _payload(adapter: str, name: str, description: str, schema: dict) -> dict:
@@ -156,6 +160,24 @@ def test_network_privilege_normalizes_consistently(tmp_path: Path, adapter: str)
     assert capability.risk == 15
     assert capability.scope.kind == "restricted"
     assert capability.scope.values == ("https://api.example.com/v1",)
+
+
+@pytest.mark.parametrize("adapter", ADAPTERS)
+def test_schema_hidden_shell_privilege_cannot_downgrade_by_adapter(
+    tmp_path: Path,
+    adapter: str,
+):
+    tool, capability = _scan_payload(
+        tmp_path,
+        adapter,
+        _payload(adapter, "task_worker", "Process a task", SHELL_SCHEMA),
+    )
+
+    assert tool.adapter == adapter
+    assert capability.id == "shell.execute"
+    assert capability.risk == 35
+    assert capability.confidence == "low"
+    assert "property:shell_command" in capability.evidence[0].signal
 
 
 @pytest.mark.parametrize("adapter", ADAPTERS)
