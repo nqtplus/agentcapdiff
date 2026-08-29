@@ -187,11 +187,14 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
             tool = _markdown_escape(tool_raw)
             before = item.get("before", {})
             after = item.get("after", {})
+            is_uncertainty_increase = (
+                isinstance(before, dict)
+                and isinstance(after, dict)
+                and scope_uncertainty_increased(before, after)
+            )
             if (capability_raw, tool_raw) in expansion_keys:
                 marker = " **EXPANSION**"
-            elif isinstance(before, dict) and isinstance(after, dict) and scope_uncertainty_increased(
-                before, after
-            ):
+            elif is_uncertainty_increase:
                 marker = " **REVIEW REQUIRED — SCOPE UNCERTAINTY INCREASED**"
             else:
                 marker = ""
