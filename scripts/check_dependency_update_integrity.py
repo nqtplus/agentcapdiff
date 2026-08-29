@@ -298,8 +298,7 @@ def _git_changed_paths(root: Path, base_sha: str, head_sha: str) -> list[str]:
     result = subprocess.run(
         ["git", "diff", "--name-only", "-z", base_sha, head_sha, "--"],
         cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=False,
         timeout=20,
     )
