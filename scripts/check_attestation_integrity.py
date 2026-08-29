@@ -55,6 +55,10 @@ def _check_release_workflow(root: Path) -> None:
         raise AttestationIntegrityError(
             "release attestation verification must complete before release publication"
         )
+    if "--require-published-release" in release:
+        raise AttestationIntegrityError(
+            "producer prepublication verification must not require a release that does not exist yet"
+        )
 
 
 def _check_verifier(root: Path) -> None:
@@ -74,6 +78,15 @@ def _check_verifier(root: Path) -> None:
         '"--deny-self-hosted-runners"',
         '"--predicate-type"',
         '"--bundle"',
+        '"--require-published-release"',
+        '"isDraft"',
+        '"isPrerelease"',
+        '"isImmutable"',
+        '"assets"',
+        "agentcapdiff-release-source:",
+        'f"repos/{REPOSITORY}/commits/{tag}"',
+        'f"repos/{REPOSITORY}/compare/{source_sha}...main"',
+        "published release asset set mismatch",
         'result.get("verificationResult")',
         'verification.get("statement")',
         'statement.get("predicate")',
@@ -98,6 +111,13 @@ def _check_consumer_guidance(root: Path) -> None:
         "--source-digest",
         "--signer-digest",
         "--deny-self-hosted-runners",
+        "--require-published-release",
+        "published, immutable",
+        "tag resolves to the exact reviewed source SHA",
+        "requirements/action-runtime-lock.txt",
+        "--require-hashes",
+        "--no-deps",
+        "pip check",
         "https://slsa.dev/provenance/v1",
         "https://spdx.dev/Document/v2.3",
     )
