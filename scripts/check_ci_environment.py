@@ -26,6 +26,7 @@ def _load_config() -> dict[str, object]:
         "runner_os",
         "runner_arch",
         "image_os",
+        "image_version",
         "os_id",
         "os_version",
         "ambient_python",
@@ -45,6 +46,8 @@ def _load_config() -> dict[str, object]:
             _fail(f"invalid reviewed CI image version: {version!r}")
     if len(set(image_versions)) != len(image_versions):
         _fail("CI image_versions contains a duplicate")
+    if payload["image_version"] not in image_versions:
+        _fail("canonical CI image_version must be present in image_versions")
 
     setup_versions = payload.get("setup_python_versions")
     if not isinstance(setup_versions, list) or not setup_versions:
