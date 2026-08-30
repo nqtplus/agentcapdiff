@@ -59,6 +59,12 @@ class ScanResult:
     findings: list[Finding] = field(default_factory=list)
     capability_graph: dict[str, Any] | None = None
     policy: dict[str, Any] | None = None
+    _semantic_fingerprint: str | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def risk_score(self) -> int:
@@ -78,7 +84,18 @@ class ScanResult:
             default="INFO",
         )
 
+    def seal(self, policy: Any) -> None:
+        from .result_semantics import seal_scan_result
+
+        seal_scan_result(self, policy)
+
+    def assert_consistent(self) -> None:
+        from .result_semantics import assert_scan_result_consistent
+
+        assert_scan_result_consistent(self)
+
     def to_dict(self) -> dict[str, Any]:
+        self.assert_consistent()
         return {
             "risk_score": self.risk_score,
             "max_severity": self.max_severity,
