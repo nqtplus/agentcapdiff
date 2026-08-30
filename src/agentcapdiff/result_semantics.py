@@ -12,7 +12,7 @@ from .scopes import scope_records
 from .snapshot_semantics import validate_snapshot_semantics
 
 if TYPE_CHECKING:
-    from .models import ScanResult
+    from .models import Finding, ScanResult
 
 
 class ScanResultConsistencyError(ValueError):
@@ -28,14 +28,14 @@ def _canonical(value: object) -> str:
     )
 
 
-def _finding_record(finding: object) -> dict[str, object]:
+def _finding_record(finding: Finding) -> dict[str, object]:
     return {
-        "severity": getattr(finding, "severity"),
-        "rule_id": getattr(finding, "rule_id"),
-        "message": getattr(finding, "message"),
-        "capability": getattr(finding, "capability"),
-        "tool": getattr(finding, "tool"),
-        "source": getattr(finding, "source"),
+        "severity": finding.severity,
+        "rule_id": finding.rule_id,
+        "message": finding.message,
+        "capability": finding.capability,
+        "tool": finding.tool,
+        "source": finding.source,
     }
 
 
@@ -109,7 +109,9 @@ def _validate_result_projection(result: ScanResult) -> None:
     try:
         validate_snapshot_semantics(_snapshot_projection(result))
     except ValueError as exc:
-        raise ScanResultConsistencyError(f"ScanResult semantic projection is inconsistent: {exc}") from exc
+        raise ScanResultConsistencyError(
+            f"ScanResult semantic projection is inconsistent: {exc}"
+        ) from exc
 
 
 def seal_scan_result(result: ScanResult, policy: Policy) -> None:
@@ -122,7 +124,9 @@ def seal_scan_result(result: ScanResult, policy: Policy) -> None:
 
     expected_policy = policy_to_record(policy)
     if _canonical(result.policy) != _canonical(expected_policy):
-        raise ScanResultConsistencyError("policy record does not match the effective runtime policy")
+        raise ScanResultConsistencyError(
+            "policy record does not match the effective runtime policy"
+        )
 
     expected_findings = evaluate_policy(result.capabilities, policy, result.risk_score)
     if result.findings != expected_findings:
