@@ -75,6 +75,15 @@ def _scan_or_report_error(path: Path, policy: Path | None):
         return None
 
 
+def _verify_result_or_report_error(result) -> bool:
+    try:
+        result.assert_consistent()
+    except ValueError as exc:
+        print(f"agentcapdiff: inconsistent scan result: {exc}", file=sys.stderr)
+        return False
+    return True
+
+
 def _diff_or_report_error(base: Path, head: Path):
     try:
         return compare_snapshots(base, head)
@@ -92,6 +101,8 @@ def main(argv: list[str] | None = None) -> int:
         result = _scan_or_report_error(Path(args.path), policy)
         if result is None:
             return 3
+        if not _verify_result_or_report_error(result):
+            return 3
         report = {
             "text": text_report,
             "json": json_report,
@@ -107,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
             policy = None
         result = _scan_or_report_error(Path(args.path), policy)
         if result is None:
+            return 3
+        if not _verify_result_or_report_error(result):
             return 3
         try:
             write_snapshot(result, Path(args.output))
