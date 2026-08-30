@@ -21,4 +21,5 @@ def scan(path: Path, policy_path: Path | None = None) -> ScanResult:
         policy=policy_to_record(policy),
     )
     result.findings = evaluate_policy(caps, policy, result.risk_score)
+    result.seal(policy)
     return result
