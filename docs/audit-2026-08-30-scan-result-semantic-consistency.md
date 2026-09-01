@@ -42,6 +42,12 @@ A final output-boundary review found that `ScanResult.to_dict()` and `snapshot_p
 
 For scanner-sealed results, mapping outputs are now detached before they cross the library boundary. `snapshot_payload()` reuses the detached mapping projection from `to_dict()`. Manually constructed unsealed 1.x objects retain their historical alias behavior so the audit does not silently change existing fixture/library semantics outside the scanner-sealed path.
 
+## Bootstrap integration contract
+
+Issue #53 identified a separate current-main producer/consumer inconsistency when multiple provenance records share the same `(capability, tool)` but carry conflicting scope evidence. Bootstrap PR #54 reconciles those records before graph, policy, snapshot, and seal construction while preserving each provenance record.
+
+Audit #21 therefore includes an explicit integration regression for the post-#54 contract: duplicate capability records with different sources are accepted by the semantic seal when their scope semantics have already been reconciled to one conservative shared scope. The regression also verifies that both provenance records remain present. Conflicting unreconciled scope semantics remain invalid and are not treated as safe.
+
 ## Remediation
 
 Scanner-produced results now receive an internal semantic seal after policy evaluation.
@@ -77,6 +83,7 @@ Permanent tests cover:
 - a real `scan()` result is sealed and passes semantic verification;
 - sealing rejects findings that do not match the effective policy;
 - sealing rejects capabilities whose tool is absent from discovery;
+- duplicate provenance records are accepted after their scope semantics have been conservatively reconciled and both sources remain preserved;
 - resealing with the same effective policy is idempotent while resealing with a different policy is rejected;
 - graph mutation after sealing is rejected before JSON serialization;
 - policy mutation after sealing is rejected;
@@ -90,5 +97,7 @@ Permanent tests cover:
 This is an internal consistency guarantee, not an immutability or runtime-security guarantee. Python callers can deliberately construct unsealed results, and scanner-sealed objects remain ordinary mutable Python objects if callers intentionally mutate the object itself. The guard detects that drift at protected output boundaries; detached outputs prevent accidental or indirect mutation through returned mapping aliases. The scanner still relies on the correctness of its static discovery/classification/policy logic, and the seal does not prove the analyzed agent is safe.
 
 The verification/detachment sequence is designed for normal single-threaded library and CLI use; this audit does not claim transactional atomicity against a hostile concurrent thread mutating the same `ScanResult` during serialization.
+
+A future audit may consider recomputing capability inference from the discovered `ToolRecord` set as an additional construction invariant. That is deliberately deferred until bootstrap #54 lands because #54 changes the scope/inference composition stage that such a recomputation would need to mirror exactly.
 
 No target repository code is imported or executed, no discovered endpoint is contacted, and no credentials are requested or used by this audit.
