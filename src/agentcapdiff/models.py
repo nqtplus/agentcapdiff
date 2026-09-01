@@ -111,7 +111,9 @@ class ScanResult:
                 for x in self.tools
             ],
             "capabilities": [asdict(x) for x in self.capabilities],
-            "capability_graph": deepcopy(self.capability_graph) if sealed else self.capability_graph,
+            "capability_graph": (
+                deepcopy(self.capability_graph) if sealed else self.capability_graph
+            ),
             "policy": deepcopy(self.policy) if sealed else self.policy,
             "findings": [asdict(x) for x in self.findings],
         }
