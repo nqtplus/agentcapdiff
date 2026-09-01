@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 from pathlib import Path
 
@@ -164,6 +165,8 @@ def test_sealed_result_rejects_drift_at_library_output_boundaries(serializer) ->
 @pytest.mark.parametrize("serializer", [lambda result: result.to_dict(), snapshot_payload])
 def test_sealed_mapping_outputs_are_detached_from_internal_state(serializer) -> None:
     result = _sealed_result()
+    original_policy = deepcopy(result.policy)
+    original_graph = deepcopy(result.capability_graph)
     output = serializer(result)
     assert isinstance(output["policy"], dict)
     assert isinstance(output["capability_graph"], dict)
@@ -184,8 +187,8 @@ def test_sealed_mapping_outputs_are_detached_from_internal_state(serializer) -> 
         }
     ]
 
-    assert result.policy["deny"] == []
-    assert result.capability_graph["paths"] == []
+    assert result.policy == original_policy
+    assert result.capability_graph == original_graph
     result.assert_consistent()
 
 
