@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -96,6 +97,7 @@ class ScanResult:
 
     def to_dict(self) -> dict[str, Any]:
         self.assert_consistent()
+        sealed = self._semantic_fingerprint is not None
         return {
             "risk_score": self.risk_score,
             "max_severity": self.max_severity,
@@ -109,7 +111,7 @@ class ScanResult:
                 for x in self.tools
             ],
             "capabilities": [asdict(x) for x in self.capabilities],
-            "capability_graph": self.capability_graph,
-            "policy": self.policy,
+            "capability_graph": deepcopy(self.capability_graph) if sealed else self.capability_graph,
+            "policy": deepcopy(self.policy) if sealed else self.policy,
             "findings": [asdict(x) for x in self.findings],
         }
