@@ -30,6 +30,12 @@ The first remediation draft re-checked sealed results at CLI scan/snapshot bound
 
 That was a real semantic-boundary gap even though normal CLI use was already protected. The remediation was extended so every built-in `ScanResult` output serializer checks the seal itself. Because `assert_consistent()` is intentionally a no-op for manually constructed unsealed results, existing 1.x library compatibility is preserved.
 
+## Continuation finding — idempotent reseal was not bound to the supplied policy
+
+A further continuation review found that calling `seal()` on an already sealed result verified the stored fingerprint and returned before comparing the supplied `Policy` with the result's recorded effective policy. The result itself did not become inconsistent, but a caller could successfully invoke `result.seal(policy_b)` on a result originally sealed under `policy_a`, creating a misleading API success at exactly the trust boundary this audit is intended to make explicit.
+
+Resealing is now idempotent only when the supplied effective policy serializes to the same policy record already bound into the result. A different policy fails closed before the existing seal is accepted.
+
 ## Remediation
 
 Scanner-produced results now receive an internal semantic seal after policy evaluation.
@@ -39,7 +45,7 @@ The seal validates that:
 1. every inferred capability references a discovered tool;
 2. the capability graph exactly recomputes from the current capabilities;
 3. the in-memory snapshot-style projection passes the same cross-field semantic reconciliation used for untrusted snapshots;
-4. the effective policy record matches the runtime `Policy` used by the scanner;
+4. the effective policy record matches the runtime `Policy` used by the scanner, including idempotent reseal attempts;
 5. policy findings exactly recompute from the capabilities, effective policy, and risk score.
 
 After validation, a private SHA-256 semantic fingerprint is stored over the scanner result's security-relevant output state. The fingerprint is an internal runtime guard only; it is not added to JSON, SARIF, snapshot, or other stable 1.x machine-readable output.
@@ -61,6 +67,7 @@ Permanent tests cover:
 - a real `scan()` result is sealed and passes semantic verification;
 - sealing rejects findings that do not match the effective policy;
 - sealing rejects capabilities whose tool is absent from discovery;
+- resealing with the same effective policy is idempotent while resealing with a different policy is rejected;
 - graph mutation after sealing is rejected before JSON serialization;
 - policy mutation after sealing is rejected;
 - finding mutation after sealing is rejected;
