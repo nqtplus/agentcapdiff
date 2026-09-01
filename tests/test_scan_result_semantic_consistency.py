@@ -91,6 +91,16 @@ def test_seal_rejects_capability_that_has_no_discovered_tool() -> None:
         result.seal(policy)
 
 
+def test_reseal_is_idempotent_only_for_the_same_effective_policy() -> None:
+    policy = Policy(max_risk_score=100)
+    result = _sealed_result(policy)
+
+    result.seal(policy)
+
+    with pytest.raises(ScanResultConsistencyError, match="effective runtime policy"):
+        result.seal(Policy(deny={"filesystem.read"}, max_risk_score=100))
+
+
 def test_sealed_result_rejects_graph_drift_before_json_serialization() -> None:
     result = _sealed_result()
     assert result.capability_graph is not None
