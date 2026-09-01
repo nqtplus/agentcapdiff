@@ -161,7 +161,37 @@ def test_sealed_result_rejects_drift_at_library_output_boundaries(serializer) ->
         serializer(result)
 
 
+@pytest.mark.parametrize("serializer", [lambda result: result.to_dict(), snapshot_payload])
+def test_sealed_mapping_outputs_are_detached_from_internal_state(serializer) -> None:
+    result = _sealed_result()
+    output = serializer(result)
+    assert isinstance(output["policy"], dict)
+    assert isinstance(output["capability_graph"], dict)
+    assert isinstance(result.policy, dict)
+    assert isinstance(result.capability_graph, dict)
+
+    output["policy"]["deny"] = ["filesystem.read"]
+    output["capability_graph"]["paths"] = [
+        {
+            "id": "fabricated.path",
+            "title": "Fabricated path",
+            "severity": "LOW",
+            "confidence": "high",
+            "capabilities": ["filesystem.read"],
+            "tools": ["reader"],
+            "evidence": [],
+            "message": "fabricated",
+        }
+    ]
+
+    assert result.policy["deny"] == []
+    assert result.capability_graph["paths"] == []
+    result.assert_consistent()
+
+
 def test_unsealed_manual_scan_result_keeps_1x_library_compatibility() -> None:
+    graph = {"schema_version": "1", "nodes": [], "edges": [], "paths": []}
+    policy = {"deny": []}
     result = ScanResult(
         capabilities=[
             Capability(
@@ -170,13 +200,19 @@ def test_unsealed_manual_scan_result_keeps_1x_library_compatibility() -> None:
                 risk=10,
                 reason="manual library construction",
             )
-        ]
+        ],
+        capability_graph=graph,
+        policy=policy,
     )
 
     record = result.to_dict()
+    snapshot = snapshot_payload(result)
 
     assert record["risk_score"] == 10
     assert record["capabilities"][0]["tool"] == "manual-only"
-    assert snapshot_payload(result)["risk_score"] == 10
+    assert record["capability_graph"] is graph
+    assert record["policy"] is policy
+    assert snapshot["capability_graph"] is graph
+    assert snapshot["policy"] is policy
     assert "AgentCapDiff" in text_report(result)
     assert '"runs"' in sarif_report(result)
