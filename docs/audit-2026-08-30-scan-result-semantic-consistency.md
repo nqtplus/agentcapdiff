@@ -36,6 +36,12 @@ A further continuation review found that calling `seal()` on an already sealed r
 
 Resealing is now idempotent only when the supplied effective policy serializes to the same policy record already bound into the result. A different policy fails closed before the existing seal is accepted.
 
+## Continuation finding — verified mapping outputs exposed live aliases
+
+A final output-boundary review found that `ScanResult.to_dict()` and `snapshot_payload()` returned the exact mutable `policy` and `capability_graph` dictionaries stored inside the result. A caller could therefore receive an output after semantic verification, mutate a nested mapping, and simultaneously mutate the sealed result through the shared object reference. The next guarded serialization would fail closed, but the already-returned output could be changed after its verification point and the internal state would be altered as a side effect.
+
+For scanner-sealed results, mapping outputs are now detached before they cross the library boundary. `snapshot_payload()` reuses the detached mapping projection from `to_dict()`. Manually constructed unsealed 1.x objects retain their historical alias behavior so the audit does not silently change existing fixture/library semantics outside the scanner-sealed path.
+
 ## Remediation
 
 Scanner-produced results now receive an internal semantic seal after policy evaluation.
@@ -52,11 +58,15 @@ After validation, a private SHA-256 semantic fingerprint is stored over the scan
 
 Before built-in output serialization, the sealed result is checked again. This includes CLI scan/snapshot output, JSON serialization through `ScanResult.to_dict()`, text reports, SARIF reports, and snapshot payload/writes. If graph, policy, findings, tools, capabilities, risk, or max severity drift after sealing, output fails closed rather than emitting a trustworthy-looking inconsistent result.
 
+Verified mapping outputs for sealed results are detached from the internal `policy` and `capability_graph` objects before return, preventing post-verification alias mutation from modifying scanner state.
+
 ## Compatibility boundary
 
 The seal applies automatically to results returned by `scan()`.
 
 Manually constructed `ScanResult` values remain unsealed by default and retain their existing 1.x library behavior. This is intentional: tests and library consumers may construct partial result objects for formatting or diff fixtures without representing a complete scanner run. The audit does not silently redefine those objects as invalid.
+
+For the same compatibility reason, unsealed manual results preserve their existing mapping-reference behavior. Defensive detachment is limited to scanner-sealed results.
 
 The private seal field is excluded from equality, repr, constructors, and serialized output. Existing stable public keys remain unchanged.
 
@@ -72,10 +82,13 @@ Permanent tests cover:
 - policy mutation after sealing is rejected;
 - finding mutation after sealing is rejected;
 - text, SARIF, and snapshot library serializers reject a mutated sealed result;
-- manually constructed unsealed `ScanResult` values keep existing 1.x JSON, text, SARIF, and snapshot serialization behavior.
+- JSON-style and snapshot mapping outputs from sealed results cannot mutate internal policy or graph state through aliases;
+- manually constructed unsealed `ScanResult` values keep existing 1.x JSON, text, SARIF, snapshot, and mapping-reference behavior.
 
 ## Residual boundary
 
-This is an internal consistency guarantee, not an immutability or runtime-security guarantee. Python callers can deliberately construct unsealed results, and the scanner still relies on the correctness of its static discovery/classification/policy logic. The seal prevents contradictory scanner-produced evidence from being silently emitted; it does not prove the analyzed agent is safe.
+This is an internal consistency guarantee, not an immutability or runtime-security guarantee. Python callers can deliberately construct unsealed results, and scanner-sealed objects remain ordinary mutable Python objects if callers intentionally mutate the object itself. The guard detects that drift at protected output boundaries; detached outputs prevent accidental or indirect mutation through returned mapping aliases. The scanner still relies on the correctness of its static discovery/classification/policy logic, and the seal does not prove the analyzed agent is safe.
+
+The verification/detachment sequence is designed for normal single-threaded library and CLI use; this audit does not claim transactional atomicity against a hostile concurrent thread mutating the same `ScanResult` during serialization.
 
 No target repository code is imported or executed, no discovered endpoint is contacted, and no credentials are requested or used by this audit.
