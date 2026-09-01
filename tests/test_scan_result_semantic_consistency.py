@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from agentcapdiff.diffing import snapshot_payload
+from agentcapdiff.formats import sarif_report, text_report
 from agentcapdiff.graph import build_capability_graph, capability_graph_to_record
 from agentcapdiff.models import Capability, Finding, ScanResult, ToolRecord
 from agentcapdiff.policy import Policy, evaluate_policy, policy_to_record
@@ -132,6 +134,23 @@ def test_sealed_result_rejects_policy_or_findings_drift() -> None:
         result.to_dict()
 
 
+@pytest.mark.parametrize("serializer", [text_report, sarif_report, snapshot_payload])
+def test_sealed_result_rejects_drift_at_library_output_boundaries(serializer) -> None:
+    result = _sealed_result()
+    result.findings.append(
+        Finding(
+            severity="HIGH",
+            rule_id="fabricated.finding",
+            message="Fabricated finding",
+            capability="filesystem.read",
+            tool="reader",
+        )
+    )
+
+    with pytest.raises(ScanResultConsistencyError, match="changed after scanner construction"):
+        serializer(result)
+
+
 def test_unsealed_manual_scan_result_keeps_1x_library_compatibility() -> None:
     result = ScanResult(
         capabilities=[
@@ -148,3 +167,6 @@ def test_unsealed_manual_scan_result_keeps_1x_library_compatibility() -> None:
 
     assert record["risk_score"] == 10
     assert record["capabilities"][0]["tool"] == "manual-only"
+    assert snapshot_payload(result)["risk_score"] == 10
+    assert "AgentCapDiff" in text_report(result)
+    assert '"runs"' in sarif_report(result)
