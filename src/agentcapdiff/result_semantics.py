@@ -117,16 +117,16 @@ def _validate_result_projection(result: ScanResult) -> None:
 def seal_scan_result(result: ScanResult, policy: Policy) -> None:
     """Validate scanner construction and seal the result against later semantic drift."""
 
-    current_fingerprint = getattr(result, "_semantic_fingerprint", None)
-    if current_fingerprint is not None:
-        assert_scan_result_consistent(result)
-        return
-
     expected_policy = policy_to_record(policy)
     if _canonical(result.policy) != _canonical(expected_policy):
         raise ScanResultConsistencyError(
             "policy record does not match the effective runtime policy"
         )
+
+    current_fingerprint = getattr(result, "_semantic_fingerprint", None)
+    if current_fingerprint is not None:
+        assert_scan_result_consistent(result)
+        return
 
     expected_findings = evaluate_policy(result.capabilities, policy, result.risk_score)
     if result.findings != expected_findings:
