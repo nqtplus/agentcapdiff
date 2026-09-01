@@ -115,7 +115,7 @@ def test_scanner_snapshot_round_trip_accepts_duplicate_tool_scope_conflict(
         if cap.id == "filesystem.read" and cap.tool == "read_file"
     ]
     assert len(capabilities) == 2
-    assert {cap.source for cap in capabilities} == {"a.json", "b.json"}
+    assert {Path(cap.source).name for cap in capabilities} == {"a.json", "b.json"}
     assert {cap.scope.kind for cap in capabilities} == {"unknown"}
 
     payload = snapshot_payload(result)
