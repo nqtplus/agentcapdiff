@@ -54,6 +54,7 @@ def _snapshot_findings(result: ScanResult) -> list[dict[str, Any]]:
 
 
 def snapshot_payload(result: ScanResult) -> dict[str, Any]:
+    result.assert_consistent()
     capability_ids = sorted({c.id for c in result.capabilities})
     capability_records = [capability_to_record(cap) for cap in result.capabilities]
     capability_records.sort(
