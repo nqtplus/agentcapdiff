@@ -24,6 +24,12 @@ A future refactor, plugin/library caller, or accidental mutation could therefore
 
 Snapshot artifact validation already rejects contradictory *loaded* snapshots, but that protection happens after a snapshot exists. Scanner-produced output should not be able to create the contradiction in the first place.
 
+## Continuation finding — library serializers could bypass the seal check
+
+The first remediation draft re-checked sealed results at CLI scan/snapshot boundaries and through `ScanResult.to_dict()`. A continuation review found that direct library callers could still pass a mutated sealed result to `text_report()`, `sarif_report()`, or `snapshot_payload()` / `write_snapshot()` and serialize stale or contradictory state without invoking the CLI guard.
+
+That was a real semantic-boundary gap even though normal CLI use was already protected. The remediation was extended so every built-in `ScanResult` output serializer checks the seal itself. Because `assert_consistent()` is intentionally a no-op for manually constructed unsealed results, existing 1.x library compatibility is preserved.
+
 ## Remediation
 
 Scanner-produced results now receive an internal semantic seal after policy evaluation.
@@ -38,7 +44,7 @@ The seal validates that:
 
 After validation, a private SHA-256 semantic fingerprint is stored over the scanner result's security-relevant output state. The fingerprint is an internal runtime guard only; it is not added to JSON, SARIF, snapshot, or other stable 1.x machine-readable output.
 
-Before CLI scan/snapshot output, the sealed result is checked again. JSON serialization through `ScanResult.to_dict()` also checks the seal. If graph, policy, findings, tools, capabilities, risk, or max severity drift after sealing, output fails closed rather than emitting a trustworthy-looking inconsistent result.
+Before built-in output serialization, the sealed result is checked again. This includes CLI scan/snapshot output, JSON serialization through `ScanResult.to_dict()`, text reports, SARIF reports, and snapshot payload/writes. If graph, policy, findings, tools, capabilities, risk, or max severity drift after sealing, output fails closed rather than emitting a trustworthy-looking inconsistent result.
 
 ## Compatibility boundary
 
@@ -58,7 +64,8 @@ Permanent tests cover:
 - graph mutation after sealing is rejected before JSON serialization;
 - policy mutation after sealing is rejected;
 - finding mutation after sealing is rejected;
-- manually constructed unsealed `ScanResult` values keep existing 1.x serialization behavior.
+- text, SARIF, and snapshot library serializers reject a mutated sealed result;
+- manually constructed unsealed `ScanResult` values keep existing 1.x JSON, text, SARIF, and snapshot serialization behavior.
 
 ## Residual boundary
 
