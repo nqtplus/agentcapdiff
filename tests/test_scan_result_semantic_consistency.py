@@ -7,7 +7,7 @@ import pytest
 from agentcapdiff.diffing import snapshot_payload
 from agentcapdiff.formats import sarif_report, text_report
 from agentcapdiff.graph import build_capability_graph, capability_graph_to_record
-from agentcapdiff.models import Capability, Finding, ScanResult, ToolRecord
+from agentcapdiff.models import Capability, Finding, ScanResult, ScopeEvidence, ToolRecord
 from agentcapdiff.policy import Policy, evaluate_policy, policy_to_record
 from agentcapdiff.result_semantics import ScanResultConsistencyError
 from agentcapdiff.scanner import scan
@@ -90,6 +90,46 @@ def test_seal_rejects_capability_that_has_no_discovered_tool() -> None:
 
     with pytest.raises(ScanResultConsistencyError, match="absent from discovered tools"):
         result.seal(policy)
+
+
+def test_seal_accepts_reconciled_duplicate_provenance() -> None:
+    policy = Policy(max_risk_score=100)
+    scope = ScopeEvidence(
+        "unknown",
+        (),
+        "Duplicate static capability records preserve unresolved scope uncertainty.",
+    )
+    tools = [ToolRecord(name="reader")]
+    capabilities = [
+        Capability(
+            id="filesystem.read",
+            tool="reader",
+            risk=10,
+            reason="evidence a",
+            source="a.json",
+            scope=scope,
+        ),
+        Capability(
+            id="filesystem.read",
+            tool="reader",
+            risk=10,
+            reason="evidence b",
+            source="b.json",
+            scope=scope,
+        ),
+    ]
+    result = ScanResult(
+        tools=tools,
+        capabilities=capabilities,
+        capability_graph=capability_graph_to_record(build_capability_graph(capabilities)),
+        policy=policy_to_record(policy),
+    )
+    result.findings = evaluate_policy(capabilities, policy, result.risk_score)
+
+    result.seal(policy)
+
+    result.assert_consistent()
+    assert {cap.source for cap in result.capabilities} == {"a.json", "b.json"}
 
 
 def test_reseal_is_idempotent_only_for_the_same_effective_policy() -> None:
