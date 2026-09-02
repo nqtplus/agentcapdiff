@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
+from math import isfinite
 from typing import TYPE_CHECKING
 
 from .capabilities import infer_capabilities
@@ -27,7 +28,75 @@ def _canonical(value: object) -> str:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
+        allow_nan=False,
     )
+
+
+def _validate_json_compatible(value: object, path: str, active: set[int]) -> None:
+    if value is None or isinstance(value, (str, bool, int)):
+        return
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise ScanResultConsistencyError(
+                f"{path} contains a non-finite number that is not valid JSON"
+            )
+        return
+
+    if isinstance(value, dict):
+        object_id = id(value)
+        if object_id in active:
+            raise ScanResultConsistencyError(
+                f"{path} contains a cyclic mapping that is not valid JSON"
+            )
+        active.add(object_id)
+        try:
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise ScanResultConsistencyError(
+                        f"{path} contains a non-string mapping key that is not valid JSON"
+                    )
+                _validate_json_compatible(child, f"{path}.{key}", active)
+        except RecursionError as exc:
+            raise ScanResultConsistencyError(
+                f"{path} exceeds safe JSON-compatible nesting"
+            ) from exc
+        finally:
+            active.remove(object_id)
+        return
+
+    if isinstance(value, list):
+        object_id = id(value)
+        if object_id in active:
+            raise ScanResultConsistencyError(
+                f"{path} contains a cyclic sequence that is not valid JSON"
+            )
+        active.add(object_id)
+        try:
+            for index, child in enumerate(value):
+                _validate_json_compatible(child, f"{path}[{index}]", active)
+        except RecursionError as exc:
+            raise ScanResultConsistencyError(
+                f"{path} exceeds safe JSON-compatible nesting"
+            ) from exc
+        finally:
+            active.remove(object_id)
+        return
+
+    raise ScanResultConsistencyError(
+        f"{path} contains unsupported {type(value).__name__} evidence; "
+        "tool input schemas must be strict JSON-compatible data"
+    )
+
+
+def _validate_tool_schemas(result: ScanResult) -> None:
+    for index, tool in enumerate(result.tools):
+        if tool.input_schema is None:
+            continue
+        _validate_json_compatible(
+            tool.input_schema,
+            f"tools[{index}].input_schema",
+            set(),
+        )
 
 
 def _finding_record(finding: Finding) -> dict[str, object]:
@@ -102,6 +171,8 @@ def _validate_result_projection(result: ScanResult) -> None:
             "capabilities reference tools absent from discovered tools: "
             + ", ".join(repr(tool) for tool in missing_tools)
         )
+
+    _validate_tool_schemas(result)
 
     expected_capabilities = reconcile_capability_scopes(infer_capabilities(result.tools))
     if result.capabilities != expected_capabilities:
