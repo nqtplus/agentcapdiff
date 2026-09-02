@@ -9,7 +9,7 @@ import sys
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 WHEEL = f"agentcapdiff-{VERSION}-py3-none-any.whl"
 SDIST = f"agentcapdiff-{VERSION}.tar.gz"
 CHECKOUT_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -95,6 +95,15 @@ def test_release_integrity_contract_passes_for_repository():
     )
     assert result.returncode == 0, result.stderr
     assert "release-integrity: PASS" in result.stdout
+
+
+def test_release_workflow_avoids_admin_only_immutability_settings_probe():
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    assert 'repos/$GITHUB_REPOSITORY/immutable-releases' not in workflow
+    assert 'gh release edit "$GITHUB_REF_NAME" --draft=false' in workflow
+    assert 'gh release view "$GITHUB_REF_NAME" --json isImmutable --jq .isImmutable' in workflow
+    assert 'if [[ "$immutable" != "true" ]]' in workflow
 
 
 def test_release_integrity_rejects_checkout_credential_persistence(tmp_path: pathlib.Path):
