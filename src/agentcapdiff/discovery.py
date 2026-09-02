@@ -8,7 +8,9 @@ from typing import Any
 
 import yaml
 
+from .jsonio import DuplicateJSONObjectKeyError, loads_unique
 from .models import ToolRecord
+from .yamlio import DuplicateYAMLMappingKeyError, safe_load_unique
 
 SUPPORTED_SUFFIXES = {".json", ".yaml", ".yml"}
 IGNORED_DIRS = {".git", ".venv", "venv", "node_modules", "dist", "build", ".tox"}
@@ -42,8 +44,8 @@ def _read(path: Path, limits: DiscoveryLimits) -> tuple[Any, int]:
     text = path.read_text(encoding="utf-8")
     try:
         if path.suffix.lower() == ".json":
-            return json.loads(text), size
-        return yaml.safe_load(text), size
+            return loads_unique(text), size
+        return safe_load_unique(text), size
     except RecursionError as exc:
         raise DiscoveryLimitError(f"input parser recursion exceeds safety limit: {path}") from exc
 
@@ -265,6 +267,10 @@ def discover_tools(
 
         try:
             data, size = _read(path, limits)
+        except (DuplicateJSONObjectKeyError, DuplicateYAMLMappingKeyError) as exc:
+            raise DiscoveryLimitError(
+                f"discovery input contains ambiguous duplicate mapping keys: {path}"
+            ) from exc
         except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
             if explicit_file:
                 raise DiscoveryLimitError(
