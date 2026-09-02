@@ -596,6 +596,7 @@ def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
 
 def policy_to_record(policy: Policy) -> dict[str, Any]:
     _validate_policy_for_evaluation(policy)
+    _canonical_suppressions(policy)
     return {
         "schema": _POLICY_SCHEMA_VERSION,
         "deny": sorted(policy.deny),
