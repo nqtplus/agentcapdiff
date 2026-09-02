@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
+from datetime import UTC, date, datetime
 from math import isfinite
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,10 @@ _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
 
 class ScanResultConsistencyError(ValueError):
     """Raised when a sealed scanner result no longer matches its semantic evidence."""
+
+
+def _utc_today() -> date:
+    return datetime.now(UTC).date()
 
 
 def _canonical(value: object) -> str:
@@ -144,6 +149,41 @@ def _validate_effective_policy(policy: Policy) -> None:
         if not isinstance(boundary.note, str):
             raise ScanResultConsistencyError(
                 f"effective policy trust boundary note for {tool!r} must be a string"
+            )
+
+
+def _validate_sealed_policy_time(result: ScanResult) -> None:
+    policy = result.policy
+    if not isinstance(policy, dict):
+        raise ScanResultConsistencyError("sealed ScanResult policy must be a mapping")
+
+    suppressions = policy.get("suppressions", [])
+    if not isinstance(suppressions, list):
+        raise ScanResultConsistencyError(
+            "sealed ScanResult policy suppressions must be a list"
+        )
+
+    today = _utc_today()
+    for index, suppression in enumerate(suppressions):
+        if not isinstance(suppression, dict):
+            raise ScanResultConsistencyError(
+                f"sealed ScanResult policy suppression {index} must be a mapping"
+            )
+        expires = suppression.get("expires")
+        if not isinstance(expires, str):
+            raise ScanResultConsistencyError(
+                f"sealed ScanResult policy suppression {index} requires an ISO expiry date"
+            )
+        try:
+            expiry = date.fromisoformat(expires)
+        except ValueError as exc:
+            raise ScanResultConsistencyError(
+                f"sealed ScanResult policy suppression {index} has invalid expiry date"
+            ) from exc
+        if expiry < today:
+            raise ScanResultConsistencyError(
+                "sealed ScanResult contains an expired policy suppression: "
+                f"{expiry.isoformat()}"
             )
 
 
@@ -277,6 +317,7 @@ def assert_scan_result_consistent(result: ScanResult) -> None:
     if expected_fingerprint is None:
         return
 
+    _validate_sealed_policy_time(result)
     _validate_result_projection(result)
     current_fingerprint = _semantic_fingerprint(result)
     if current_fingerprint != expected_fingerprint:
