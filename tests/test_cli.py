@@ -29,3 +29,37 @@ def test_cli_missing_scan_path_fails_closed(tmp_path: Path, capsys):
     captured = capsys.readouterr()
     assert "unsafe or invalid scan input" in captured.err
     assert "scan path does not exist" in captured.err
+
+
+def test_cli_yaml_native_schema_scalar_fails_closed(tmp_path: Path, capsys):
+    tools = tmp_path / "tools.yaml"
+    tools.write_text(
+        """tools:
+  - name: read_file
+    description: Read files
+    inputSchema:
+      type: object
+      properties:
+        since:
+          default: 2026-09-02
+""",
+        encoding="utf-8",
+    )
+    missing_policy = tmp_path / "no-policy.yaml"
+
+    assert (
+        main(
+            [
+                "scan",
+                str(tmp_path),
+                "--policy",
+                str(missing_policy),
+                "--fail-on",
+                "never",
+            ]
+        )
+        == 3
+    )
+    captured = capsys.readouterr()
+    assert "unsafe or invalid scan input/policy" in captured.err
+    assert "strict JSON-compatible" in captured.err
