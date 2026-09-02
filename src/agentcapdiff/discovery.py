@@ -239,6 +239,7 @@ def discover_tools(
     if root.is_symlink() and root.is_dir():
         raise DiscoveryLimitError(f"refusing symlinked scan root: {root}")
 
+    explicit_file = root.is_file()
     root_boundary = root.resolve() if root.is_dir() else root.parent.resolve()
     candidates = _candidate_files(root, limits)
     found: list[ToolRecord] = []
@@ -264,8 +265,13 @@ def discover_tools(
 
         try:
             data, size = _read(path, limits)
-        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError):
-            # Malformed/unreadable documents are ignored; resource-limit violations are not.
+        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as exc:
+            if explicit_file:
+                raise DiscoveryLimitError(
+                    f"explicit discovery input is malformed or unreadable: {path}"
+                ) from exc
+            # Malformed/unreadable documents discovered inside a directory remain tolerant so
+            # unrelated repository data cannot make an otherwise valid directory scan unusable.
             continue
 
         total_bytes += size
