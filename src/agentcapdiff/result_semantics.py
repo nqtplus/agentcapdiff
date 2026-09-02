@@ -5,9 +5,11 @@ import json
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from .capabilities import infer_capabilities
 from .graph import build_capability_graph, capability_graph_to_record
 from .policy import Policy, evaluate_policy, policy_to_record
 from .schema import capability_to_record
+from .scope_reconcile import reconcile_capability_scopes
 from .scopes import scope_records
 from .snapshot_semantics import validate_snapshot_semantics
 
@@ -48,6 +50,7 @@ def _unchecked_output_record(result: ScanResult) -> dict[str, object]:
                 "name": tool.name,
                 "description": tool.description,
                 "source": tool.source,
+                "input_schema": tool.input_schema,
                 "adapter": tool.adapter,
             }
             for tool in result.tools
@@ -98,6 +101,12 @@ def _validate_result_projection(result: ScanResult) -> None:
         raise ScanResultConsistencyError(
             "capabilities reference tools absent from discovered tools: "
             + ", ".join(repr(tool) for tool in missing_tools)
+        )
+
+    expected_capabilities = reconcile_capability_scopes(infer_capabilities(result.tools))
+    if result.capabilities != expected_capabilities:
+        raise ScanResultConsistencyError(
+            "capabilities do not match inference from discovered tool evidence"
         )
 
     if result.capability_graph is None:
