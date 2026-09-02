@@ -21,6 +21,7 @@ _POLICY_MAX_DEPTH = 64
 _POLICY_MAX_NODES = 20_000
 _MAPPING_FIELDS = frozenset({"allow_by_tool", "scope_constraints", "trust_boundaries"})
 _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
+_UNKNOWN_SCOPE = frozenset({"deny", "review", "ignore"})
 _SELECTOR_WILDCARDS = frozenset("*?[]{}")
 _IDENTITY_CONTROL_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
 _TOOL_SEPARATOR_RE = re.compile(r"[\s_-]+")
@@ -124,6 +125,21 @@ def _string_set(value: Any, field_name: str) -> set[str]:
 def _load_max_risk_score(value: Any) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
         raise ValueError("Policy field max_risk_score must be an integer from 0 to 100")
+    return value
+
+
+def _load_unknown_scope(value: Any) -> str:
+    if not isinstance(value, str) or value not in _UNKNOWN_SCOPE:
+        raise ValueError("Policy unknown_scope must be one of: deny, review, ignore")
+    return value
+
+
+def _load_trust_level(value: Any, tool: str) -> str:
+    if not isinstance(value, str) or value not in _TRUST_LEVELS:
+        raise ValueError(
+            f"Trust boundary for {tool} has invalid trust; "
+            "expected trusted, untrusted, or unknown"
+        )
     return value
 
 
@@ -233,11 +249,7 @@ def _load_trust_boundaries(raw: Any) -> dict[str, TrustBoundary]:
             raise ValueError(f"Trust boundary for {tool} must be a string or mapping")
         if not isinstance(boundary, str) or not boundary.strip():
             raise ValueError(f"Trust boundary for {tool} requires a non-empty boundary")
-        if trust not in _TRUST_LEVELS:
-            raise ValueError(
-                f"Trust boundary for {tool} has invalid trust; "
-                "expected trusted, untrusted, or unknown"
-            )
+        trust = _load_trust_level(trust, tool)
         if not isinstance(note, str):
             raise ValueError(f"Trust boundary note for {tool} must be a string")
         result[canonical_tool] = TrustBoundary(
@@ -461,9 +473,7 @@ def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
     current_day = today or datetime.now(UTC).date()
     root = path.resolve().parent
     raw, sources = _load_raw_policy(path, root, (), _PolicyBudget())
-    unknown_scope = raw.get("unknown_scope", "review")
-    if unknown_scope not in {"deny", "review", "ignore"}:
-        raise ValueError("Policy unknown_scope must be one of: deny, review, ignore")
+    unknown_scope = _load_unknown_scope(raw.get("unknown_scope", "review"))
     return Policy(
         deny=_capability_set(raw.get("deny", []), "deny"),
         require_review=_capability_set(raw.get("require_review", []), "require_review"),
