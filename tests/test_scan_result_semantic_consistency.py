@@ -8,7 +8,7 @@ from agentcapdiff.capabilities import infer_capabilities
 from agentcapdiff.diffing import snapshot_payload
 from agentcapdiff.formats import sarif_report, text_report
 from agentcapdiff.graph import build_capability_graph, capability_graph_to_record
-from agentcapdiff.models import Capability, Finding, ScanResult, ScopeEvidence, ToolRecord
+from agentcapdiff.models import Capability, Finding, ScanResult, ToolRecord
 from agentcapdiff.policy import Policy, evaluate_policy, policy_to_record
 from agentcapdiff.result_semantics import ScanResultConsistencyError
 from agentcapdiff.scanner import scan
