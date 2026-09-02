@@ -185,8 +185,8 @@ def test_sealed_result_rejects_policy_or_findings_drift() -> None:
             severity="HIGH",
             rule_id="fabricated.finding",
             message="Fabricated finding",
-            capability="filesystem.read",
-            tool="reader",
+            capability=result.capabilities[0].id,
+            tool=result.capabilities[0].tool,
         )
     )
 
@@ -224,8 +224,8 @@ def test_sealed_result_rejects_drift_at_library_output_boundaries(serializer) ->
             severity="HIGH",
             rule_id="fabricated.finding",
             message="Fabricated finding",
-            capability="filesystem.read",
-            tool="reader",
+            capability=result.capabilities[0].id,
+            tool=result.capabilities[0].tool,
         )
     )
 
