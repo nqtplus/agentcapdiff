@@ -2,7 +2,7 @@ name: AgentCapDiff
 branding:
   icon: shield
   color: blue
-description: Detect risky AI-agent capability changes in CI.
+description: AI agent security policy-as-code for detecting risky tool and capability changes in PRs and CI.
 inputs:
   path:
     description: Path inside GITHUB_WORKSPACE to scan
