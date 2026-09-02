@@ -121,6 +121,12 @@ def _string_set(value: Any, field_name: str) -> set[str]:
     return set(value)
 
 
+def _load_max_risk_score(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError("Policy field max_risk_score must be an integer from 0 to 100")
+    return value
+
+
 def _capability_set(value: Any, field_name: str) -> set[str]:
     if value is None:
         return set()
@@ -461,7 +467,7 @@ def load_policy(path: Path | None, *, today: date | None = None) -> Policy:
     return Policy(
         deny=_capability_set(raw.get("deny", []), "deny"),
         require_review=_capability_set(raw.get("require_review", []), "require_review"),
-        max_risk_score=int(raw.get("max_risk_score", 60)),
+        max_risk_score=_load_max_risk_score(raw.get("max_risk_score", 60)),
         allow_by_tool=_load_allow_by_tool(raw.get("allow_by_tool")),
         scope_constraints=_load_scope_constraints(raw.get("scope_constraints")),
         unknown_scope=unknown_scope,
