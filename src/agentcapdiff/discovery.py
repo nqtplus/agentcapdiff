@@ -251,13 +251,13 @@ def discover_tools(
     for path in candidates:
         if path.suffix.lower() not in SUPPORTED_SUFFIXES:
             continue
-        if any(part in IGNORED_DIRS for part in path.parts):
-            continue
 
         try:
-            path.resolve().relative_to(root_boundary)
+            relative_path = path.resolve().relative_to(root_boundary)
         except ValueError as exc:
             raise DiscoveryLimitError(f"scan input escapes root boundary: {path}") from exc
+        if any(part in IGNORED_DIRS for part in relative_path.parts[:-1]):
+            continue
 
         documents += 1
         if documents > limits.max_documents:
