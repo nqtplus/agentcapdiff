@@ -242,6 +242,11 @@ def discover_tools(
         raise DiscoveryLimitError(f"refusing symlinked scan root: {root}")
 
     explicit_file = root.is_file()
+    if explicit_file and root.suffix.lower() not in SUPPORTED_SUFFIXES:
+        supported = ", ".join(sorted(SUPPORTED_SUFFIXES))
+        raise DiscoveryLimitError(
+            f"explicit discovery input must use a supported suffix ({supported}): {root}"
+        )
     root_boundary = root.resolve() if root.is_dir() else root.parent.resolve()
     candidates = _candidate_files(root, limits)
     found: list[ToolRecord] = []
