@@ -59,3 +59,14 @@ def test_seal_accepts_json_compatible_date_like_string() -> None:
 
     result.seal(policy)
     result.assert_consistent()
+
+
+def test_sealed_result_rejects_post_seal_non_json_schema_drift() -> None:
+    result, policy = _result_with_schema({"default": "2026-09-02"})
+    result.seal(policy)
+    schema = result.tools[0].input_schema
+    assert isinstance(schema, dict)
+    schema["default"] = date(2026, 9, 2)
+
+    with pytest.raises(ScanResultConsistencyError, match="strict JSON-compatible"):
+        result.to_dict()
