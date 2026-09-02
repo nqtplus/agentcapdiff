@@ -622,8 +622,33 @@ def _canonical_policy_allowlists(policy: Policy) -> dict[str, set[str]]:
 def _canonical_suppressions(policy: Policy) -> tuple[Suppression, ...]:
     result: list[Suppression] = []
     seen: set[tuple[str, str | None, str | None]] = set()
-    for suppression in policy.suppressions:
+    current_day = datetime.now(UTC).date()
+    for index, suppression in enumerate(policy.suppressions):
+        field_name = f"suppressions[{index}]"
+        if not isinstance(suppression, Suppression):
+            raise ValueError(f"Policy field {field_name} must be a Suppression")
+        if not isinstance(suppression.rule_id, str) or not suppression.rule_id.strip():
+            raise ValueError(f"Policy field {field_name}.rule_id is required")
+        if not isinstance(suppression.reason, str) or not suppression.reason.strip():
+            raise ValueError(f"Policy field {field_name}.reason is required")
+        expires = suppression.expires
+        if isinstance(expires, datetime) or not isinstance(expires, date):
+            raise ValueError(f"Policy field {field_name}.expires must be a date")
         rule_id = _rule_selector(suppression.rule_id, "suppression.rule_id")
+        if expires < current_day:
+            raise ValueError(
+                f"Policy suppression {rule_id} expired on {expires.isoformat()}"
+            )
+        for selector_name, selector in (
+            ("capability", suppression.capability),
+            ("tool", suppression.tool),
+        ):
+            if selector is not None and (
+                not isinstance(selector, str) or not selector.strip()
+            ):
+                raise ValueError(
+                    f"Policy field {field_name}.{selector_name} must be a non-empty string"
+                )
         capability = (
             _capability_selector(suppression.capability, "suppression.capability")
             if suppression.capability is not None
@@ -641,8 +666,8 @@ def _canonical_suppressions(policy: Policy) -> tuple[Suppression, ...]:
         result.append(
             Suppression(
                 rule_id=rule_id,
-                reason=suppression.reason,
-                expires=suppression.expires,
+                reason=suppression.reason.strip(),
+                expires=expires,
                 capability=capability,
                 tool=tool,
             )
