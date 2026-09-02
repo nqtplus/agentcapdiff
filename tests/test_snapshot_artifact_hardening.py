@@ -63,7 +63,7 @@ def test_snapshot_parser_recursion_is_normalized(tmp_path: Path, monkeypatch) ->
     def raise_recursion(_text: str, **_kwargs):
         raise RecursionError("simulated parser recursion")
 
-    monkeypatch.setattr("agentcapdiff.snapshotio.json.loads", raise_recursion)
+    monkeypatch.setattr("agentcapdiff.jsonio.json.loads", raise_recursion)
     with pytest.raises(SnapshotArtifactError, match="parser safety limits"):
         compare_snapshots(base, head)
 
