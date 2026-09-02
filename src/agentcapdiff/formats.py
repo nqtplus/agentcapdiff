@@ -10,6 +10,7 @@ from .scopes import scope_uncertainty_increased
 
 
 def text_report(result: ScanResult) -> str:
+    result.assert_consistent()
     lines = [
         "AgentCapDiff",
         "============",
@@ -306,6 +307,7 @@ def markdown_diff_report(diff: dict[str, Any]) -> str:
 
 
 def sarif_report(result: ScanResult) -> str:
+    result.assert_consistent()
     rules = {}
     sarif_results = []
     levels = {

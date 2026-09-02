@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -59,6 +60,12 @@ class ScanResult:
     findings: list[Finding] = field(default_factory=list)
     capability_graph: dict[str, Any] | None = None
     policy: dict[str, Any] | None = None
+    _semantic_fingerprint: str | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def risk_score(self) -> int:
@@ -78,7 +85,19 @@ class ScanResult:
             default="INFO",
         )
 
+    def seal(self, policy: Any) -> None:
+        from .result_semantics import seal_scan_result
+
+        seal_scan_result(self, policy)
+
+    def assert_consistent(self) -> None:
+        from .result_semantics import assert_scan_result_consistent
+
+        assert_scan_result_consistent(self)
+
     def to_dict(self) -> dict[str, Any]:
+        self.assert_consistent()
+        sealed = self._semantic_fingerprint is not None
         return {
             "risk_score": self.risk_score,
             "max_severity": self.max_severity,
@@ -92,7 +111,9 @@ class ScanResult:
                 for x in self.tools
             ],
             "capabilities": [asdict(x) for x in self.capabilities],
-            "capability_graph": self.capability_graph,
-            "policy": self.policy,
+            "capability_graph": (
+                deepcopy(self.capability_graph) if sealed else self.capability_graph
+            ),
+            "policy": deepcopy(self.policy) if sealed else self.policy,
             "findings": [asdict(x) for x in self.findings],
         }

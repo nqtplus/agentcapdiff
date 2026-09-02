@@ -54,6 +54,8 @@ def _snapshot_findings(result: ScanResult) -> list[dict[str, Any]]:
 
 
 def snapshot_payload(result: ScanResult) -> dict[str, Any]:
+    result.assert_consistent()
+    serialized = result.to_dict()
     capability_ids = sorted({c.id for c in result.capabilities})
     capability_records = [capability_to_record(cap) for cap in result.capabilities]
     capability_records.sort(
@@ -73,8 +75,8 @@ def snapshot_payload(result: ScanResult) -> dict[str, Any]:
         "capability_fingerprint": capability_fingerprint(capability_ids),
         "tools": sorted({t.name for t in result.tools}),
         "scopes": scope_records(result.capabilities),
-        "capability_graph": result.capability_graph,
-        "policy": result.policy,
+        "capability_graph": serialized["capability_graph"],
+        "policy": serialized["policy"],
         "findings": _snapshot_findings(result),
     }
 
