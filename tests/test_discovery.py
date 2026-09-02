@@ -52,10 +52,10 @@ def test_parser_recursion_is_reported_as_limit_error(tmp_path: Path, monkeypatch
     path = tmp_path / "parser-recursion.json"
     path.write_text("{}", encoding="utf-8")
 
-    def raise_recursion(_text: str):
+    def raise_recursion(_text: str, **_kwargs):
         raise RecursionError("simulated parser recursion")
 
-    monkeypatch.setattr("agentcapdiff.discovery.json.loads", raise_recursion)
+    monkeypatch.setattr("agentcapdiff.jsonio.json.loads", raise_recursion)
     with pytest.raises(DiscoveryLimitError, match="parser recursion exceeds safety limit"):
         discover_tools(path)
 

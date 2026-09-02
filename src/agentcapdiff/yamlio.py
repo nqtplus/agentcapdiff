@@ -11,6 +11,10 @@ _MERGE_TAG = "tag:yaml.org,2002:merge"
 _MERGE_KEY = ("__agentcapdiff_yaml_merge__",)
 
 
+class DuplicateYAMLMappingKeyError(ConstructorError):
+    """Raised when YAML defines the same raw mapping key more than once."""
+
+
 class UniqueKeySafeLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate raw mapping keys.
 
@@ -31,7 +35,7 @@ class UniqueKeySafeLoader(yaml.SafeLoader):
                     # The parent SafeLoader will produce the normal unhashable-key error.
                     continue
                 if key in seen:
-                    raise ConstructorError(
+                    raise DuplicateYAMLMappingKeyError(
                         "while constructing a mapping",
                         node.start_mark,
                         f"found duplicate mapping key {key!r}",
