@@ -2,7 +2,7 @@
 
 All notable changes will be documented here.
 
-## [1.0.0] - 2026-08-27
+## [1.0.0] - 2026-09-02
 
 ### Added
 - Stable 1.x compatibility contract for normalized capability records and policy semantics
@@ -14,10 +14,13 @@ All notable changes will be documented here.
 - Package/runtime version finalized at `1.0.0` and project maturity marked Production/Stable only after the v1.0 release gate is satisfied
 - README and ROADMAP now expose the v1.0 stable compatibility and safety contract
 - 1.x compatibility guidance makes breaking security-semantic reinterpretation a major/schema decision rather than a silent change
+- Final pre-publication verification was refreshed after the post-gate security-hardening series and before creation of the first `v1.0.0` production tag
 
 ### Security
 - Static-only safety invariants remain unchanged: no target-code execution/import, discovered-endpoint probing, or credential use; UNKNOWN remains uncertainty rather than SAFE
 - Stable release verification requires Python 3.11/3.12/3.13 CI, full pytest/Ruff, benchmark and release-integrity regression gates, CodeQL, self-policy, PR capability diff, project-state consistency, and no known unresolved critical/high repository security issue
+- Pre-publication hardening added sealed-result semantic consistency, strict effective-policy validation, temporary-suppression expiry enforcement, duplicate-key-safe policy/snapshot/discovery parsing, and fail-closed explicit discovery input handling
+- Discovery hardening prevents malformed explicit inputs, ambiguous duplicate mapping keys, ignored-ancestor path names, and unsupported explicit file suffixes from silently producing misleading clean results
 - Production use continues to require a reviewed full commit SHA or a reviewed verified immutable release tag instead of a floating branch reference
 
 ## [0.9.0] - 2026-08-26
