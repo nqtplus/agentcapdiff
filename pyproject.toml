@@ -5,12 +5,27 @@ build-backend = "hatchling.build"
 [project]
 name = "agentcapdiff"
 version = "1.0.1"
-description = "Policy-as-code and capability diffing for AI agents and tool-enabled applications."
+description = "AI agent security policy-as-code for capability diffing, least-privilege review, and CI enforcement."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 authors = [{ name = "nqtplus" }]
-keywords = ["ai-agents", "security", "mcp", "policy-as-code", "github-actions", "least-privilege"]
+keywords = [
+  "ai-agents",
+  "ai-agent-security",
+  "agent-security",
+  "security",
+  "mcp",
+  "openai-agents",
+  "langchain",
+  "langgraph",
+  "crewai",
+  "policy-as-code",
+  "least-privilege",
+  "capability-diff",
+  "sarif",
+  "github-actions",
+]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Environment :: Console",

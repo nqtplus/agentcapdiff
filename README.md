@@ -2,26 +2,38 @@
 
 [![CI](https://github.com/nqtplus/agentcapdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/nqtplus/agentcapdiff/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/nqtplus/agentcapdiff/actions/workflows/codeql.yml/badge.svg)](https://github.com/nqtplus/agentcapdiff/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/nqtplus/agentcapdiff)](https://github.com/nqtplus/agentcapdiff/releases/latest)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**Policy-as-code and capability diffing for AI agents.**
+**AI agent security policy-as-code for reviewing capability and permission changes before they reach production.**
 
-AgentCapDiff helps reviewers answer a deceptively hard question before an agent-enabled pull request is merged:
+AgentCapDiff statically inventories AI-agent tools, maps them to normalized capabilities, evaluates least-privilege policy, emits SARIF for GitHub code scanning, and diffs capability snapshots across pull requests.
 
-> **What can this agent do now that it could not do before?**
+It is designed for **MCP**, **OpenAI / OpenAI Agents SDK**, **Claude**, **LangChain**, **LangGraph**, **CrewAI**, and generic JSON/YAML tool definitions.
 
-It inventories tool capabilities from supported static JSON/YAML tool definitions, assigns transparent risk weights, evaluates a least-privilege policy, emits SARIF for GitHub code scanning, and compares capability snapshots across pull requests.
+> **Core review question:** What can this agent do now that it could not do before?
 
-> Status: **v1.0.0 stable — complete.** v1.0 freezes the 1.x compatibility expectations for capability/policy semantics and machine-readable JSON/SARIF output, backed by the existing multi-framework conformance, semantic-scope, capability-path, benchmark, fuzz/security, CodeQL, self-policy, release-integrity, and immutable-release gates. A clean result is evidence about recognized static inputs, **not proof that an agent is safe**.
+AgentCapDiff helps make changes such as new shell execution, broader filesystem access, external-network access, secret access, GitHub writes, or policy weakening visible during code review.
 
-## Why this exists
+**Current stable release: v1.0.1.** AgentCapDiff is a static policy aid, not a runtime sandbox or proof that an agent is safe.
 
-AI agents increasingly combine filesystem, shell, network, GitHub, email, database, and secret-bearing tools. Traditional code review shows *which lines changed*; it does not clearly show *which operational powers changed*.
+## Why AgentCapDiff
 
-AgentCapDiff treats agent capability as a reviewable artifact.
+Traditional code review shows which lines changed. AI-agent review also needs to show which **operational powers** changed.
 
-## v1.0 stability contract
+AgentCapDiff turns tool access and agent capability into reviewable security artifacts:
 
-v1.0 defines stable 1.x compatibility guarantees without expanding AgentCapDiff into runtime execution. See [docs/stability-v1.0.md](docs/stability-v1.0.md) for the contract and [docs/v1.0-verification.md](docs/v1.0-verification.md) for the release-gate evidence map.
+| Need | AgentCapDiff |
+| --- | --- |
+| AI agent capability inventory | Normalizes recognized static tool definitions into capability IDs |
+| Least-privilege enforcement | Policy-as-code with deny, review, allowlist, scope, and suppression rules |
+| PR security review | Compares capability snapshots and highlights newly introduced powers |
+| MCP / agent-tool security | Recognizes multiple common serialized tool-schema formats |
+| Scope review | Classifies filesystem and network scope as restricted, broad, or unknown |
+| Risky capability combinations | Identifies possible static capability paths such as secrets + external network |
+| GitHub security integration | Emits SARIF and includes PR-native capability-diff workflows |
+| CI enforcement | Fails on configurable medium/high findings without executing target code |
 
 ## Quick start
 
@@ -32,17 +44,7 @@ python -m pip install "git+https://github.com/nqtplus/agentcapdiff.git"
 agentcapdiff scan ./agent --policy agentcapdiff.yaml
 ```
 
-For production CI, pin a reviewed full commit SHA or a verified immutable release tag instead of relying on a floating branch reference.
-
-Or for local development:
-
-```bash
-python -m pip install -e ".[dev]"
-ruff check .
-pytest
-```
-
-Example scan output:
+Example output:
 
 ```text
 AgentCapDiff
@@ -58,9 +60,63 @@ Capability inventory:
   - shell.execute: shell_execute
 ```
 
+For local development:
+
+```bash
+python -m pip install -e ".[dev]"
+ruff check .
+pytest
+```
+
+For production CI, pin a reviewed full commit SHA or a verified immutable release tag rather than a floating branch.
+
+## GitHub Action
+
+AgentCapDiff can run directly in GitHub Actions:
+
+```yaml
+- uses: nqtplus/agentcapdiff@<reviewed-full-commit-sha>
+  with:
+    path: .
+    policy: agentcapdiff.yaml
+    fail-on: medium
+```
+
+The repository includes CI, CodeQL, SARIF upload, PR capability diff, safety benchmark, self-policy, release-integrity, and immutable-release gates.
+
+## What AgentCapDiff detects
+
+AgentCapDiff focuses on security-relevant AI-agent and tool permissions, including recognized forms of:
+
+- `filesystem.read`
+- `filesystem.write`
+- `network.external`
+- `shell.execute`
+- `secrets.access`
+- `email.send`
+- `github.write`
+
+It also tracks static scope evidence and possible capability combinations. For example, `secrets.access + network.external` may indicate a possible data-egress path that deserves review.
+
+Severity and confidence are kept separate. Unknown or dynamic scope is not silently treated as safe.
+
+## Supported static inputs
+
+AgentCapDiff recognizes static serialized metadata for:
+
+- OpenAI API-style JSON/YAML function tools (`function.parameters` or direct `parameters`)
+- OpenAI Agents SDK-style serialized function tools (`params_json_schema`)
+- MCP JSON/YAML tool objects (`name` + `inputSchema`)
+- Claude client-tool JSON/YAML objects (`name` + `input_schema`)
+- LangChain / LangGraph-compatible serialized tool metadata (`args_schema` / `tool_call_schema`)
+- CrewAI-style serialized tool metadata (`args_schema` with CrewAI provenance signals)
+- Generic nested `tools` collections when framework attribution is ambiguous
+
+Framework support means **static serialized metadata recognition only**. AgentCapDiff does not import SDKs, instantiate tool classes, execute target code, contact discovered endpoints, or use credentials to materialize runtime behavior.
+
 ## Capability policy
 
-Legacy policy fields remain supported:
+A minimal policy can define risk thresholds and capabilities that require review:
 
 ```yaml
 max_risk_score: 60
@@ -75,7 +131,7 @@ require_review:
   - github.write
 ```
 
-v0.5 adds per-tool capability allowlists, static scope constraints, explicit unknown handling, trust-boundary review annotations, deterministic local inheritance, and temporary suppressions:
+More advanced policy supports per-tool allowlists, static scope constraints, explicit unknown handling, trust-boundary annotations, deterministic local inheritance, and temporary suppressions:
 
 ```yaml
 extends:
@@ -97,51 +153,20 @@ scope_constraints:
     allowed_values:
       - api.example.com
 
-unknown_scope: review  # deny | review | ignore
+unknown_scope: review
 
 trust_boundaries:
   api_client:
     boundary: internet
     trust: untrusted
     note: third-party service
-
-suppressions:
-  - rule_id: capability.review_required
-    capability: filesystem.write
-    tool: report_writer
-    reason: reviewed migration window
-    expires: 2026-09-01  # example only; use a short real expiry
 ```
 
-Inheritance is deterministic: parents are applied in listed order, later parents override earlier parents, and the child policy overrides inherited values. Mapping fields merge by key. Inherited files must remain inside the root policy directory; cycles, excessive depth, escaping paths, malformed suppressions, and expired suppressions fail closed.
+See [docs/policy-v0.5.md](docs/policy-v0.5.md) for policy semantics.
 
-`unknown_scope: review` is the default. Unknown scope is not treated as safe. Suppressions require both a non-empty reason and an ISO expiry date, remain visible as informational evidence while active, and become invalid after expiry. The CLI and composite Action default to `--fail-on medium`, so review-required and unknown-scope findings fail unattended CI unless a repository explicitly chooses another threshold. See [docs/policy-v0.5.md](docs/policy-v0.5.md).
+## Capability snapshots and diffs
 
-## Static filesystem and network scopes
-
-v0.2 keeps existing capability IDs while attaching separate static scope evidence to filesystem and external-network capabilities. Scope is classified as `restricted`, `broad`, or `unknown`.
-
-Examples of meaningful review changes include `./reports/**` → `/**` and `api.example.com` → arbitrary network access. Dynamic paths, traversal-like paths, unconstrained URL fields, and ambiguous metadata remain `unknown`; AgentCapDiff never upgrades uncertainty into a reassuring restriction.
-
-Scope evidence is derived only from static tool metadata. AgentCapDiff does not execute tool code, resolve DNS, contact discovered endpoints, or prove that runtime enforcement matches the declared schema. See [docs/scopes.md](docs/scopes.md).
-
-## Universal capability schema
-
-v0.3 adds an explicit framework-neutral capability record with a versioned schema and first-class `scope`, `evidence`, and `confidence`. Supported static framework shapes retain adapter provenance as evidence while normalizing equivalent powers to the same capability IDs, risk semantics, policy decisions, and conservative scope semantics.
-
-The adapter conformance suite checks equivalent filesystem/network privileges across MCP, OpenAI, OpenAI Agents SDK, Claude, LangChain, LangGraph-compatible, and CrewAI-style serialized metadata. It also verifies that dynamic scope remains `unknown` and that representing the same privilege through a different framework cannot silently weaken a deny-policy decision.
-
-Snapshots remain backward-readable: the v0.2 capability ID list and fingerprint stay in place while v0.3 adds `capability_schema_version` and `capability_records`. Unsupported, runtime-generated, or ambiguous framework behavior remains unknown/generic rather than being treated as safe. See [docs/capability-schema.md](docs/capability-schema.md).
-
-## Capability graph and possible paths
-
-v0.4 adds a separately versioned capability graph derived only from already-recognized static capabilities. Deterministic rules identify combinations such as `secrets.access + network.external`, `filesystem.read + email.send`, and `github.write + shell.execute` as **possible** data-egress or supply-chain paths.
-
-Severity and confidence are separate. Scope can raise path severity when evidence is broad or unresolved, while unknown scope lowers confidence rather than being treated as safe. Every path explanation states that static evidence does not prove runtime reachability or exploitability. The scanner never executes target code, probes endpoints, uses credentials, or attempts exploitation to validate a path.
-
-Snapshots carry the graph as an additive field. Older snapshots without graph data remain readable, and PR Markdown highlights newly introduced possible paths without turning them into claims of confirmed exploitation. See [docs/capability-graph.md](docs/capability-graph.md).
-
-## Snapshots and diffs
+Create before/after snapshots and compare the agent's effective capabilities:
 
 ```bash
 agentcapdiff snapshot ./agent --output before.json
@@ -150,100 +175,60 @@ agentcapdiff snapshot ./agent --output after.json
 agentcapdiff diff before.json after.json
 ```
 
-New snapshots include a deterministic SHA-256 `capability_fingerprint` derived only from the sorted, unique capability IDs. Source paths, tool names, timestamps, findings, risk score, scope evidence, and capability-path data do not affect the legacy fingerprint. See [docs/snapshots.md](docs/snapshots.md) for the canonicalization contract.
-
-Snapshots also retain filesystem/network scope evidence and the normalized effective policy. v0.5 computes a separate policy fingerprint for diffing; it does not change the legacy capability fingerprint. Older snapshots without policy metadata remain readable and do not generate fabricated weakening warnings.
-
-Machine-readable diff example:
-
-```json
-{
-  "capabilities_added": ["shell.execute"],
-  "capabilities_removed": [],
-  "tools_added": ["shell_execute"],
-  "tools_removed": [],
-  "scope_changes": [],
-  "scope_expansions": [],
-  "paths_added": [],
-  "policy_changed": true,
-  "policy_weakening_warnings": [],
-  "base_risk_score": 10,
-  "head_risk_score": 45,
-  "risk_delta": 35,
-  "fingerprint_changed": true
-}
-```
-
 For a reviewer-friendly summary:
 
 ```bash
 agentcapdiff diff before.json after.json --format markdown
 ```
 
-## PR-native capability diff
+Diff output can show capabilities and tools added or removed, scope expansion, possible capability paths, policy changes, risk deltas, and fingerprint changes.
 
-The included `PR capability diff` workflow checks out the pull request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
+See [docs/snapshots.md](docs/snapshots.md) and [docs/capability-graph.md](docs/capability-graph.md).
 
-This makes capability expansion, statically proven scope expansion, newly introduced possible capability paths, trust-boundary context, active temporary suppressions, and policy weakening visible alongside normal test and security checks. Weakening warnings include removed denies/review requirements, raised risk thresholds, relaxed unknown handling, expanded allowlists/scope constraints, new or extended suppressions, and removed trust-boundary annotations.
+## PR-native capability review
 
-## Safety benchmark
+The included **PR capability diff** workflow checks out the pull-request base commit into a detached Git worktree, scans base and head without executing target code, and writes a Markdown capability summary to the GitHub Actions step summary.
 
-v0.9 includes a committed positive/negative/ambiguous fixture corpus and a machine-readable benchmark summary. CI gates high-risk false negatives and parser failures against `benchmarks/baseline.json`, while nuisance false positives and unknown scope are reported separately rather than hidden in one score.
-
-Run it locally with:
-
-```bash
-python -m agentcapdiff.benchmark --output benchmark-summary.json
-```
-
-Every fixed classification or security regression must add a permanent sanitized fixture. The benchmark remains static and does not execute target code, probe endpoints, or use credentials. See [docs/safety-benchmark.md](docs/safety-benchmark.md).
-
-## Release integrity
-
-v0.9 treats the release pipeline as a security boundary. All external Actions in repository workflows are pinned to full commit SHAs, direct CI/release dependencies are reviewed exact pins, and Dependabot opens reviewable update PRs for both Python and GitHub Actions.
-
-A tag-triggered release must match the finalized package/runtime version and pass release-integrity checks, the test suite, Ruff, the safety benchmark, AgentCapDiff self-policy, and CodeQL before publication. The publish job builds the wheel/source distribution, creates `SHA256SUMS`, generates an SPDX 2.3 SBOM, and records GitHub build-provenance and SBOM attestations.
-
-Repository release immutability must be enabled in GitHub before a production tag is published. The workflow publishes from a draft, then accepts the release only if GitHub reports `isImmutable=true`; otherwise it fails closed and attempts to remove the mutable release/tag.
-
-See [docs/release-integrity.md](docs/release-integrity.md), [RELEASE.md](RELEASE.md), and [docs/security-review-v0.9.md](docs/security-review-v0.9.md).
-
-## GitHub Action
-
-For production use, pin the Action to a reviewed full commit SHA. A verified immutable release tag is also suitable when its release and attestations have been reviewed. Floating branches are for evaluation/development only:
-
-```yaml
-- uses: nqtplus/agentcapdiff@<reviewed-full-commit-sha>
-  with:
-    path: .
-    policy: agentcapdiff.yaml
-    fail-on: medium
-```
-
-The repository also contains SARIF upload, CodeQL, PR capability-diff, project-state consistency, release-integrity, and least-privilege release workflows.
-
-## Supported static inputs
-
-- OpenAI API-style JSON/YAML function tools (`function.parameters` or direct `parameters`)
-- OpenAI Agents SDK-style serialized function tools (`params_json_schema`)
-- MCP JSON/YAML tool objects (`name` + `inputSchema`)
-- Claude client-tool JSON/YAML objects (`name` + `input_schema`)
-- LangChain/LangGraph-compatible serialized tool metadata (`args_schema` / `tool_call_schema` with static provenance signals)
-- CrewAI-style serialized tool metadata (`args_schema` with CrewAI provenance signals)
-- Generic nested `tools` collections, retained at lower confidence when framework attribution is ambiguous
-
-Framework support means recognition of **static serialized metadata only**. AgentCapDiff does not import Python/JavaScript SDKs, instantiate decorators/classes, traverse live object graphs, or execute target code to materialize a schema. Runtime-only or unsupported shapes therefore remain outside positive adapter attribution rather than being silently labeled safe.
-
-Discovery treats scanned files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs/roots, checks resolved candidates stay inside the scan-root boundary, and bounds per-file bytes, total parsed bytes, candidate document count, nesting depth, and structured-node traversal. Inputs that exceed safety limits fail closed rather than producing a misleading clean scan.
-
-The hardening suite includes malformed/pathological input cases, deterministic fuzz/property tests, path traversal/symlink regression coverage, output-injection regression tests, and checks that discovered endpoints do not trigger network access.
-
-Roadmap and future capability work are tracked in [ROADMAP.md](ROADMAP.md) and in GitHub Issues.
+This makes capability expansion, static scope expansion, possible capability paths, trust-boundary context, active suppressions, and policy weakening visible alongside ordinary test and security checks.
 
 ## Security model
 
-AgentCapDiff is a **static policy aid**, not a sandbox, exploit scanner, runtime authorization system, or proof that an agent is safe. A clean scan must never be interpreted as permission to run untrusted tools with unrestricted credentials.
+AgentCapDiff is a **static policy aid**. It is not:
 
-AgentCapDiff does not import target project code, execute discovered tools, probe discovered endpoints, or collect credentials. When effective permission scope cannot be established statically, the safe interpretation is **unknown**, not safe or restricted.
+- a sandbox;
+- an exploit scanner;
+- a runtime authorization system;
+- proof that an AI agent is safe.
 
-Use AgentCapDiff as one layer of defense in depth alongside ordinary code review, runtime least-privilege authorization, sandboxing/isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
+A clean scan means that recognized static inputs satisfied the configured checks. It must not be interpreted as permission to run untrusted tools with unrestricted credentials.
+
+Use AgentCapDiff as one layer of defense in depth alongside code review, runtime least-privilege authorization, sandboxing or isolation where appropriate, secret isolation, dependency controls, and network/runtime policy enforcement.
+
+Discovery treats scanned files as untrusted input. It uses safe YAML loading, rejects symlinked scan inputs/roots, enforces scan-root boundaries, bounds parsing work, and fails closed on inputs that exceed safety limits.
+
+## Verification and release integrity
+
+The v1.x stability contract covers capability/policy semantics and machine-readable JSON/SARIF compatibility. Release gates include multi-framework conformance, semantic scope tests, capability-path tests, benchmark fixtures, fuzz/security testing, CodeQL, self-policy checks, and release-integrity validation.
+
+Release artifacts include wheel/source distributions, SHA-256 checksums, an SPDX SBOM, and GitHub build provenance / SBOM attestations. Production releases are required to pass immutable-release enforcement.
+
+- [v1.0 stability contract](docs/stability-v1.0.md)
+- [v1.0 verification map](docs/v1.0-verification.md)
+- [Safety benchmark](docs/safety-benchmark.md)
+- [Release integrity](docs/release-integrity.md)
+- [Security review](docs/security-review-v0.9.md)
+
+## Documentation
+
+- [Capability schema](docs/capability-schema.md)
+- [Static scopes](docs/scopes.md)
+- [Capability graph](docs/capability-graph.md)
+- [Policy model](docs/policy-v0.5.md)
+- [Snapshots and fingerprints](docs/snapshots.md)
+- [Safety benchmark](docs/safety-benchmark.md)
+- [Release process](RELEASE.md)
+- [Roadmap](ROADMAP.md)
+
+## Project scope
+
+AgentCapDiff is intentionally focused on **static AI-agent capability analysis, policy-as-code, least privilege, and pull-request review**. Runtime-only or unsupported behavior remains unknown rather than being labeled safe.
