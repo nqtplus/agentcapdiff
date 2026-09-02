@@ -9,7 +9,14 @@ from typing import TYPE_CHECKING
 
 from .capabilities import infer_capabilities
 from .graph import build_capability_graph, capability_graph_to_record
-from .policy import Policy, TrustBoundary, evaluate_policy, policy_to_record
+from .policy import (
+    Policy,
+    ScopeConstraint,
+    Suppression,
+    TrustBoundary,
+    evaluate_policy,
+    policy_to_record,
+)
 from .schema import capability_to_record
 from .scope_reconcile import reconcile_capability_scopes
 from .scopes import scope_records
@@ -20,6 +27,8 @@ if TYPE_CHECKING:
 
 _UNKNOWN_SCOPE = frozenset({"deny", "review", "ignore"})
 _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
+_SCOPE_KINDS = frozenset({"restricted", "broad", "unknown"})
+_COLLECTION_TYPES = (list, tuple, set, frozenset)
 
 
 class ScanResultConsistencyError(ValueError):
@@ -107,7 +116,27 @@ def _validate_tool_schemas(result: ScanResult) -> None:
         )
 
 
+def _validate_string_collection(
+    value: object,
+    field_name: str,
+    *,
+    allow_empty_strings: bool = False,
+) -> None:
+    if not isinstance(value, _COLLECTION_TYPES):
+        raise ScanResultConsistencyError(
+            f"effective policy {field_name} must be a collection of strings"
+        )
+    for item in value:
+        if not isinstance(item, str) or (not allow_empty_strings and not item.strip()):
+            raise ScanResultConsistencyError(
+                f"effective policy {field_name} must contain strings"
+            )
+
+
 def _validate_effective_policy(policy: Policy) -> None:
+    _validate_string_collection(policy.deny, "deny")
+    _validate_string_collection(policy.require_review, "require_review")
+
     threshold = policy.max_risk_score
     if (
         isinstance(threshold, bool)
@@ -116,6 +145,47 @@ def _validate_effective_policy(policy: Policy) -> None:
     ):
         raise ScanResultConsistencyError(
             "effective policy max_risk_score must be an integer from 0 to 100"
+        )
+
+    allow_by_tool = policy.allow_by_tool
+    if not isinstance(allow_by_tool, dict):
+        raise ScanResultConsistencyError(
+            "effective policy allow_by_tool must be a mapping"
+        )
+    for tool, capabilities in allow_by_tool.items():
+        if not isinstance(tool, str) or not tool.strip():
+            raise ScanResultConsistencyError(
+                "effective policy allow_by_tool keys must be non-empty strings"
+            )
+        _validate_string_collection(capabilities, f"allow_by_tool.{tool}")
+
+    constraints = policy.scope_constraints
+    if not isinstance(constraints, dict):
+        raise ScanResultConsistencyError(
+            "effective policy scope_constraints must be a mapping"
+        )
+    for capability, constraint in constraints.items():
+        if not isinstance(capability, str) or not capability.strip():
+            raise ScanResultConsistencyError(
+                "effective policy scope_constraints keys must be non-empty strings"
+            )
+        if not isinstance(constraint, ScopeConstraint):
+            raise ScanResultConsistencyError(
+                "effective policy scope constraint for "
+                f"{capability!r} must be a ScopeConstraint"
+            )
+        _validate_string_collection(
+            constraint.allowed_kinds,
+            f"scope_constraints.{capability}.allowed_kinds",
+        )
+        if not set(constraint.allowed_kinds).issubset(_SCOPE_KINDS):
+            raise ScanResultConsistencyError(
+                f"effective policy scope constraint for {capability!r} has invalid kind"
+            )
+        _validate_string_collection(
+            constraint.allowed_values,
+            f"scope_constraints.{capability}.allowed_values",
+            allow_empty_strings=True,
         )
 
     unknown_scope = policy.unknown_scope
@@ -150,6 +220,24 @@ def _validate_effective_policy(policy: Policy) -> None:
             raise ScanResultConsistencyError(
                 f"effective policy trust boundary note for {tool!r} must be a string"
             )
+
+    suppressions = policy.suppressions
+    if not isinstance(suppressions, (list, tuple)):
+        raise ScanResultConsistencyError(
+            "effective policy suppressions must be a sequence of Suppression values"
+        )
+    if not all(isinstance(item, Suppression) for item in suppressions):
+        raise ScanResultConsistencyError(
+            "effective policy suppressions must contain Suppression values"
+        )
+
+    sources = policy.sources
+    if not isinstance(sources, (list, tuple)) or not all(
+        isinstance(source, str) for source in sources
+    ):
+        raise ScanResultConsistencyError(
+            "effective policy sources must be a sequence of strings"
+        )
 
 
 def _validate_sealed_policy_time(result: ScanResult) -> None:
