@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -109,6 +109,7 @@ def test_expired_suppression_fails_closed(tmp_path: Path) -> None:
 
 
 def test_active_suppression_is_temporary_and_visible(tmp_path: Path) -> None:
+    expiry = datetime.now(UTC).date() + timedelta(days=30)
     path = tmp_path / "agentcapdiff.yml"
     path.write_text(
         "require_review:\n  - shell.execute\n"
@@ -117,14 +118,14 @@ def test_active_suppression_is_temporary_and_visible(tmp_path: Path) -> None:
         "    capability: shell.execute\n"
         "    tool: shell\n"
         "    reason: reviewed migration window\n"
-        "    expires: 2026-08-30\n",
+        f"    expires: {expiry.isoformat()}\n",
         encoding="utf-8",
     )
-    policy = load_policy(path, today=date(2026, 8, 25))
+    policy = load_policy(path)
     findings = evaluate_policy([_cap("shell.execute", "shell")], policy, 10)
     assert [finding.rule_id for finding in findings] == ["policy.suppressed"]
     assert findings[0].severity == "INFO"
-    assert "2026-08-30" in findings[0].message
+    assert expiry.isoformat() in findings[0].message
     assert "reviewed migration window" in findings[0].message
 
 
