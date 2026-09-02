@@ -22,6 +22,8 @@ _POLICY_MAX_NODES = 20_000
 _MAPPING_FIELDS = frozenset({"allow_by_tool", "scope_constraints", "trust_boundaries"})
 _TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
 _UNKNOWN_SCOPE = frozenset({"deny", "review", "ignore"})
+_SCOPE_KINDS = frozenset({"restricted", "broad", "unknown"})
+_COLLECTION_TYPES = (list, tuple, set, frozenset)
 _SELECTOR_WILDCARDS = frozenset("*?[]{}")
 _IDENTITY_CONTROL_CATEGORIES = frozenset({"Cc", "Cf", "Cs"})
 _TOOL_SEPARATOR_RE = re.compile(r"[\s_-]+")
@@ -69,6 +71,111 @@ class Policy:
 class _PolicyBudget:
     files: int = 0
     total_bytes: int = 0
+
+
+def _validate_runtime_string_collection(
+    value: object,
+    field_name: str,
+    *,
+    allow_empty_strings: bool = False,
+) -> None:
+    if not isinstance(value, _COLLECTION_TYPES):
+        raise ValueError(f"effective policy {field_name} must be a collection of strings")
+    for item in value:
+        if not isinstance(item, str) or (not allow_empty_strings and not item.strip()):
+            raise ValueError(f"effective policy {field_name} must contain strings")
+
+
+def _validate_policy_for_evaluation(policy: Policy) -> None:
+    if not isinstance(policy, Policy):
+        raise ValueError("effective policy must be a Policy")
+
+    _validate_runtime_string_collection(policy.deny, "deny")
+    _validate_runtime_string_collection(policy.require_review, "require_review")
+
+    threshold = policy.max_risk_score
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, int)
+        or not 0 <= threshold <= 100
+    ):
+        raise ValueError("effective policy max_risk_score must be an integer from 0 to 100")
+
+    allow_by_tool = policy.allow_by_tool
+    if not isinstance(allow_by_tool, dict):
+        raise ValueError("effective policy allow_by_tool must be a mapping")
+    for tool, capabilities in allow_by_tool.items():
+        if not isinstance(tool, str) or not tool.strip():
+            raise ValueError("effective policy allow_by_tool keys must be non-empty strings")
+        _validate_runtime_string_collection(capabilities, f"allow_by_tool.{tool}")
+
+    constraints = policy.scope_constraints
+    if not isinstance(constraints, dict):
+        raise ValueError("effective policy scope_constraints must be a mapping")
+    for capability, constraint in constraints.items():
+        if not isinstance(capability, str) or not capability.strip():
+            raise ValueError(
+                "effective policy scope_constraints keys must be non-empty strings"
+            )
+        if not isinstance(constraint, ScopeConstraint):
+            raise ValueError(
+                "effective policy scope constraint for "
+                f"{capability!r} must be a ScopeConstraint"
+            )
+        _validate_runtime_string_collection(
+            constraint.allowed_kinds,
+            f"scope_constraints.{capability}.allowed_kinds",
+        )
+        if not set(constraint.allowed_kinds).issubset(_SCOPE_KINDS):
+            raise ValueError(
+                f"effective policy scope constraint for {capability!r} has invalid kind"
+            )
+        _validate_runtime_string_collection(
+            constraint.allowed_values,
+            f"scope_constraints.{capability}.allowed_values",
+            allow_empty_strings=True,
+        )
+
+    unknown_scope = policy.unknown_scope
+    if not isinstance(unknown_scope, str) or unknown_scope not in _UNKNOWN_SCOPE:
+        raise ValueError("effective policy unknown_scope must be deny, review, or ignore")
+
+    boundaries = policy.trust_boundaries
+    if not isinstance(boundaries, dict):
+        raise ValueError("effective policy trust_boundaries must be a mapping")
+    for tool, boundary in boundaries.items():
+        if not isinstance(tool, str):
+            raise ValueError("effective policy trust_boundaries keys must be strings")
+        if not isinstance(boundary, TrustBoundary):
+            raise ValueError(
+                f"effective policy trust boundary for {tool!r} must be a TrustBoundary"
+            )
+        if not isinstance(boundary.boundary, str) or not boundary.boundary.strip():
+            raise ValueError(
+                f"effective policy trust boundary for {tool!r} requires a non-empty boundary"
+            )
+        if not isinstance(boundary.trust, str) or boundary.trust not in _TRUST_LEVELS:
+            raise ValueError(
+                f"effective policy trust boundary for {tool!r} has invalid trust"
+            )
+        if not isinstance(boundary.note, str):
+            raise ValueError(
+                f"effective policy trust boundary note for {tool!r} must be a string"
+            )
+
+    suppressions = policy.suppressions
+    if not isinstance(suppressions, (list, tuple)):
+        raise ValueError(
+            "effective policy suppressions must be a sequence of Suppression values"
+        )
+    if not all(isinstance(item, Suppression) for item in suppressions):
+        raise ValueError("effective policy suppressions must contain Suppression values")
+
+    sources = policy.sources
+    if not isinstance(sources, (list, tuple)) or not all(
+        isinstance(source, str) for source in sources
+    ):
+        raise ValueError("effective policy sources must be a sequence of strings")
 
 
 def _normalize_identity_text(value: str, field_name: str) -> str:
@@ -778,6 +885,8 @@ def evaluate_policy(
     policy: Policy,
     risk_score: int,
 ) -> list[Finding]:
+    _validate_policy_for_evaluation(policy)
+
     findings: list[Finding] = []
     allow_by_tool = _canonical_policy_allowlists(policy)
     scope_constraints = _canonical_scope_constraints(policy)
