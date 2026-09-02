@@ -113,7 +113,7 @@ def _validate_policy(policy: Any, source: Path) -> None:
 
     if "unknown_scope" in policy:
         value = policy["unknown_scope"]
-        if value not in _UNKNOWN_SCOPE:
+        if not isinstance(value, str) or value not in _UNKNOWN_SCOPE:
             raise SnapshotArtifactError(
                 f"snapshot policy.unknown_scope must be deny, review, or ignore: {source}"
             )
@@ -229,7 +229,9 @@ def _validate_snapshot(snapshot: dict[str, Any], source: Path) -> None:
         )
 
     severity = snapshot.get("max_severity")
-    if severity is not None and severity not in _SEVERITIES:
+    if severity is not None and (
+        not isinstance(severity, str) or severity not in _SEVERITIES
+    ):
         raise SnapshotArtifactError(f"snapshot max_severity is invalid: {source}")
 
     findings = snapshot.get("findings")
