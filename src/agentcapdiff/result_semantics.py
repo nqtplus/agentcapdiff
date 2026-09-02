@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from .capabilities import infer_capabilities
 from .graph import build_capability_graph, capability_graph_to_record
-from .policy import Policy, evaluate_policy, policy_to_record
+from .policy import Policy, TrustBoundary, evaluate_policy, policy_to_record
 from .schema import capability_to_record
 from .scope_reconcile import reconcile_capability_scopes
 from .scopes import scope_records
@@ -16,6 +16,9 @@ from .snapshot_semantics import validate_snapshot_semantics
 
 if TYPE_CHECKING:
     from .models import Finding, ScanResult
+
+_UNKNOWN_SCOPE = frozenset({"deny", "review", "ignore"})
+_TRUST_LEVELS = frozenset({"trusted", "untrusted", "unknown"})
 
 
 class ScanResultConsistencyError(ValueError):
@@ -109,6 +112,39 @@ def _validate_effective_policy(policy: Policy) -> None:
         raise ScanResultConsistencyError(
             "effective policy max_risk_score must be an integer from 0 to 100"
         )
+
+    unknown_scope = policy.unknown_scope
+    if not isinstance(unknown_scope, str) or unknown_scope not in _UNKNOWN_SCOPE:
+        raise ScanResultConsistencyError(
+            "effective policy unknown_scope must be deny, review, or ignore"
+        )
+
+    boundaries = policy.trust_boundaries
+    if not isinstance(boundaries, dict):
+        raise ScanResultConsistencyError(
+            "effective policy trust_boundaries must be a mapping"
+        )
+    for tool, boundary in boundaries.items():
+        if not isinstance(tool, str):
+            raise ScanResultConsistencyError(
+                "effective policy trust_boundaries keys must be strings"
+            )
+        if not isinstance(boundary, TrustBoundary):
+            raise ScanResultConsistencyError(
+                f"effective policy trust boundary for {tool!r} must be a TrustBoundary"
+            )
+        if not isinstance(boundary.boundary, str) or not boundary.boundary.strip():
+            raise ScanResultConsistencyError(
+                f"effective policy trust boundary for {tool!r} requires a non-empty boundary"
+            )
+        if not isinstance(boundary.trust, str) or boundary.trust not in _TRUST_LEVELS:
+            raise ScanResultConsistencyError(
+                f"effective policy trust boundary for {tool!r} has invalid trust"
+            )
+        if not isinstance(boundary.note, str):
+            raise ScanResultConsistencyError(
+                f"effective policy trust boundary note for {tool!r} must be a string"
+            )
 
 
 def _finding_record(finding: Finding) -> dict[str, object]:
