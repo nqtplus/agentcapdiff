@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from agentcapdiff.capabilities import infer_capabilities
 from agentcapdiff.diffing import snapshot_payload
 from agentcapdiff.formats import sarif_report, text_report
 from agentcapdiff.graph import build_capability_graph, capability_graph_to_record
@@ -11,20 +12,23 @@ from agentcapdiff.models import Capability, Finding, ScanResult, ScopeEvidence, 
 from agentcapdiff.policy import Policy, evaluate_policy, policy_to_record
 from agentcapdiff.result_semantics import ScanResultConsistencyError
 from agentcapdiff.scanner import scan
+from agentcapdiff.scope_reconcile import reconcile_capability_scopes
 
 
 def _sealed_result(policy: Policy | None = None) -> ScanResult:
     effective_policy = policy or Policy(max_risk_score=100)
-    tools = [ToolRecord(name="reader", description="Read files", source="tools.json")]
-    capabilities = [
-        Capability(
-            id="filesystem.read",
-            tool="reader",
-            risk=10,
-            reason="test evidence",
+    tools = [
+        ToolRecord(
+            name="read_file",
+            description="Read files",
             source="tools.json",
+            input_schema={
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+            },
         )
     ]
+    capabilities = reconcile_capability_scopes(infer_capabilities(tools))
     result = ScanResult(
         tools=tools,
         capabilities=capabilities,
@@ -92,32 +96,37 @@ def test_seal_rejects_capability_that_has_no_discovered_tool() -> None:
         result.seal(policy)
 
 
-def test_seal_accepts_reconciled_duplicate_provenance() -> None:
+def test_seal_rejects_capability_not_derived_from_discovered_evidence() -> None:
     policy = Policy(max_risk_score=100)
-    scope = ScopeEvidence(
-        "unknown",
-        (),
-        "Duplicate static capability records preserve unresolved scope uncertainty.",
-    )
-    tools = [ToolRecord(name="reader")]
+    tools = [ToolRecord(name="catalog_lookup", description="Lookup a local catalog")]
     capabilities = [
         Capability(
-            id="filesystem.read",
-            tool="reader",
-            risk=10,
-            reason="evidence a",
-            source="a.json",
-            scope=scope,
-        ),
-        Capability(
-            id="filesystem.read",
-            tool="reader",
-            risk=10,
-            reason="evidence b",
-            source="b.json",
-            scope=scope,
-        ),
+            id="shell.execute",
+            tool="catalog_lookup",
+            risk=35,
+            reason="fabricated evidence",
+        )
     ]
+    result = ScanResult(
+        tools=tools,
+        capabilities=capabilities,
+        capability_graph=capability_graph_to_record(build_capability_graph(capabilities)),
+        policy=policy_to_record(policy),
+    )
+    result.findings = evaluate_policy(capabilities, policy, result.risk_score)
+
+    with pytest.raises(ScanResultConsistencyError, match="discovered tool evidence"):
+        result.seal(policy)
+
+
+def test_seal_accepts_reconciled_duplicate_provenance() -> None:
+    policy = Policy(max_risk_score=100)
+    tools = [
+        ToolRecord(name="read_file", description="Read file", source="a.json"),
+        ToolRecord(name="read_file", description="Read file", source="b.json"),
+    ]
+    capabilities = reconcile_capability_scopes(infer_capabilities(tools))
+    assert {cap.scope.kind for cap in capabilities} == {"unknown"}
     result = ScanResult(
         tools=tools,
         capabilities=capabilities,
@@ -180,6 +189,28 @@ def test_sealed_result_rejects_policy_or_findings_drift() -> None:
             tool="reader",
         )
     )
+
+    with pytest.raises(ScanResultConsistencyError, match="changed after scanner construction"):
+        result.to_dict()
+
+
+def test_sealed_result_rejects_schema_drift_that_changes_inference() -> None:
+    result = _sealed_result()
+    schema = result.tools[0].input_schema
+    assert isinstance(schema, dict)
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    properties["command"] = {"type": "string"}
+
+    with pytest.raises(ScanResultConsistencyError, match="discovered tool evidence"):
+        result.to_dict()
+
+
+def test_sealed_result_rejects_schema_drift_even_when_inference_is_unchanged() -> None:
+    result = _sealed_result()
+    schema = result.tools[0].input_schema
+    assert isinstance(schema, dict)
+    schema["x-audit-note"] = "mutated after seal"
 
     with pytest.raises(ScanResultConsistencyError, match="changed after scanner construction"):
         result.to_dict()
