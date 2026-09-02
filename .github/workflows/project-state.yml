@@ -113,10 +113,13 @@ jobs:
               )
               if final_match:
                   final_target = final_match.group(1)
-                  expected = final_target.removeprefix("v") + ".0"
-                  if version != expected:
+                  stable_prefix = final_target.removeprefix("v") + "."
+                  if re.fullmatch(r"\d+\.\d+\.\d+", version) is None or not version.startswith(
+                      stable_prefix
+                  ):
                       raise SystemExit(
-                          f"README marks {final_target} complete but package version is {version}"
+                          f"README marks {final_target} complete but package version is {version}; "
+                          f"expected a stable {stable_prefix}x patch release"
                       )
                   if final_target in incomplete:
                       raise SystemExit(

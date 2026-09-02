@@ -2,6 +2,17 @@
 
 All notable changes will be documented here.
 
+## [1.0.1] - 2026-09-02
+
+### Fixed
+- Release publication no longer calls GitHub's repository-administration-only `immutable-releases` settings endpoint with the least-privilege Actions `GITHUB_TOKEN`.
+- Immutable-release acceptance remains fail-closed: publication must still return `isImmutable=true`, and exact-source workflow-owned draft/mutable release state is cleaned up without deleting or moving the source tag.
+
+### Security
+- The failed `v1.0.0` publication attempt stopped before artifact build, attestations, or GitHub Release creation; no `v1.0.0` release assets were published.
+- The existing `v1.0.0` tag remains pinned to `f5ff28757aa1f1678483267e6c57e747cd04d9ed` as an audit-trail source identity and is not moved or reused.
+- The repaired production publication candidate is `1.0.1`, preserving the v1.0 compatibility contract while fixing only the release-control authorization mismatch.
+
 ## [1.0.0] - 2026-09-02
 
 ### Added

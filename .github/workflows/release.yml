@@ -89,17 +89,6 @@ jobs:
       - run: python scripts/check_ci_environment.py --python-version "3.12.14" --pip-version "26.2.1"
       - run: "python -m pip --isolated --disable-pip-version-check install --require-hashes --no-deps --no-cache-dir --only-binary=:all: --index-url=https://pypi.org/simple -r requirements/ci-lock.txt"
       - run: python -m pip check
-      - name: Require repository release immutability before building
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          enabled="$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq .enabled)"
-          if [[ "$enabled" != "true" ]]; then
-            echo "::error::Enable GitHub release immutability before publishing a production tag."
-            exit 1
-          fi
       - name: Reconcile release state for safe retry
         id: release_state
         env:
