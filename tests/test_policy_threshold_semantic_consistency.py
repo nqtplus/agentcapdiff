@@ -10,12 +10,19 @@ from agentcapdiff.result_semantics import ScanResultConsistencyError
 
 
 def _empty_result(policy: Policy) -> ScanResult:
+    try:
+        policy_record = policy_to_record(policy)
+    except ValueError:
+        # Invalid-threshold tests intentionally exercise the independent seal boundary.
+        # Audit #36 makes direct record serialization fail closed first, so use a
+        # harmless placeholder and let result.seal(policy) assert its own error type.
+        policy_record = {}
     return ScanResult(
         tools=[],
         capabilities=[],
         findings=[],
         capability_graph=capability_graph_to_record(build_capability_graph([])),
-        policy=policy_to_record(policy),
+        policy=policy_record,
     )
 
 

@@ -9,16 +9,22 @@ from agentcapdiff.result_semantics import ScanResultConsistencyError
 
 
 def _result_for(policy: Policy, *, policy_record: dict[str, Any] | None = None) -> ScanResult:
+    if policy_record is None:
+        try:
+            policy_record = policy_to_record(policy)
+        except ValueError:
+            # Invalid-policy tests below intentionally exercise the independent seal
+            # boundary. Audit #36 makes direct record serialization fail closed first,
+            # so use a harmless placeholder and let seal(policy) assert its own error.
+            policy_record = {}
     result = ScanResult(
         capability_graph=capability_graph_to_record(build_capability_graph([])),
-        policy=policy_record if policy_record is not None else policy_to_record(policy),
+        policy=policy_record,
     )
     try:
         result.findings = evaluate_policy([], policy, result.risk_score)
     except ValueError:
-        # Invalid-policy tests below intentionally exercise the independent seal boundary.
-        # Audit #34 makes direct evaluation fail closed earlier, so leave the default
-        # empty findings in place and let result.seal(policy) assert its own error type.
+        # Audit #34 makes direct evaluation fail closed before the seal boundary too.
         result.findings = []
     return result
 
