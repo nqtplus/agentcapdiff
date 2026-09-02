@@ -716,7 +716,7 @@ def _tool_identity_findings(
                 f"Tool identity cannot be matched safely to configured selectors: {raw_name!r}",
                 tool=raw_name,
             )
-        ]
+        )
     return findings, blocked_identities
 
 
