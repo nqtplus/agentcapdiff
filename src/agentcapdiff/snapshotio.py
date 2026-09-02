@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from .jsonio import loads_unique
 from .snapshot_semantics import validate_snapshot_semantics
 
 
@@ -361,7 +362,7 @@ def load_snapshot(
         raise SnapshotArtifactError(f"snapshot artifact is not valid UTF-8: {path}") from exc
 
     try:
-        raw = json.loads(text, parse_constant=_reject_json_constant)
+        raw = loads_unique(text, parse_constant=_reject_json_constant)
     except (ValueError, RecursionError) as exc:
         raise SnapshotArtifactError(
             f"snapshot JSON is malformed or exceeds parser safety limits: {path}"
