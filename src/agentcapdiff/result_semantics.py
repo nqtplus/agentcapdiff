@@ -99,6 +99,18 @@ def _validate_tool_schemas(result: ScanResult) -> None:
         )
 
 
+def _validate_effective_policy(policy: Policy) -> None:
+    threshold = policy.max_risk_score
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, int)
+        or not 0 <= threshold <= 100
+    ):
+        raise ScanResultConsistencyError(
+            "effective policy max_risk_score must be an integer from 0 to 100"
+        )
+
+
 def _finding_record(finding: Finding) -> dict[str, object]:
     return {
         "severity": finding.severity,
@@ -197,6 +209,7 @@ def _validate_result_projection(result: ScanResult) -> None:
 def seal_scan_result(result: ScanResult, policy: Policy) -> None:
     """Validate scanner construction and seal the result against later semantic drift."""
 
+    _validate_effective_policy(policy)
     expected_policy = policy_to_record(policy)
     if _canonical(result.policy) != _canonical(expected_policy):
         raise ScanResultConsistencyError(
