@@ -886,6 +886,12 @@ def evaluate_policy(
     risk_score: int,
 ) -> list[Finding]:
     _validate_policy_for_evaluation(policy)
+    if (
+        isinstance(risk_score, bool)
+        or not isinstance(risk_score, int)
+        or not 0 <= risk_score <= 100
+    ):
+        raise ValueError("risk_score must be an integer from 0 to 100")
 
     findings: list[Finding] = []
     allow_by_tool = _canonical_policy_allowlists(policy)
