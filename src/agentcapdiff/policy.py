@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from .models import Capability, Finding
+from .yamlio import safe_load_unique
 
 _POLICY_SCHEMA_VERSION = 1
 _MAX_INHERITANCE_DEPTH = 16
@@ -385,7 +386,7 @@ def _read_policy_mapping(path: Path, budget: _PolicyBudget) -> dict[str, Any]:
         raise ValueError(f"Policy file is not valid UTF-8: {path}") from exc
 
     try:
-        raw: Any = yaml.safe_load(text) or {}
+        raw: Any = safe_load_unique(text) or {}
     except (yaml.YAMLError, RecursionError) as exc:
         raise ValueError(
             f"Policy YAML is malformed or exceeds parser safety limits: {path}"
