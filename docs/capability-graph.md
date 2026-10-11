@@ -70,7 +70,7 @@ This separation prevents `unknown` from becoming a reassuring safety signal.
 
 ## Evidence
 
-Each path records the normalized capabilities, contributing tools, scope state, and capability confidence. Evidence is deterministic and review-oriented. It does not include secrets, live credential values, network responses, or dynamically executed observations.
+Each path records the normalized capabilities, contributing tools, scope state, and capability confidence. Evidence is deterministic and review-oriented: the capability's source and any adapter-level evidence source/signal are retained so otherwise-identical observations from distinct serialized schemas do not collapse into one reviewer-facing string. Empty source metadata is shown as not established rather than inferred. Evidence does not include secrets, live credential values, network responses, or dynamically executed observations.
 
 Tool display names remain static evidence rather than a claim of runtime object identity. Alias-looking names may therefore both appear in the tool list; they do not create additional copies of the same deterministic path rule. AgentCapDiff does not fuzzy-match arbitrary Unicode/confusable runtime tool identities in the graph layer.
 
