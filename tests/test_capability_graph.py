@@ -3,7 +3,7 @@ from agentcapdiff.graph import (
     build_capability_graph,
     capability_graph_to_record,
 )
-from agentcapdiff.models import Capability, ScopeEvidence
+from agentcapdiff.models import Capability, CapabilityEvidence, ScopeEvidence
 
 RISK = {
     "filesystem.read": 10,
@@ -143,6 +143,53 @@ def test_path_evidence_is_deduplicated_and_order_independent_for_tied_records():
     assert any("a.example.com, b.example.com" in item for item in forward.evidence)
     assert forward.severity == "HIGH"
     assert forward.confidence == "low"
+
+
+def test_path_evidence_preserves_distinct_source_provenance():
+    records = [
+        _cap("secrets.access", "read_secret", source="secrets-schema.json"),
+        Capability(
+            id="network.external",
+            tool="fetch_url",
+            risk=RISK["network.external"],
+            reason="test evidence",
+            source="mcp-schema.json",
+            scope=ScopeEvidence(kind="restricted", values=("api.example.com",)),
+            evidence=(
+                CapabilityEvidence(
+                    adapter="mcp",
+                    source="mcp-schema.json#/tools/fetch_url",
+                    signal="inputSchema declares URL input",
+                ),
+            ),
+            confidence="high",
+        ),
+        Capability(
+            id="network.external",
+            tool="fetch_url",
+            risk=RISK["network.external"],
+            reason="test evidence",
+            source="openai-tools.json",
+            scope=ScopeEvidence(kind="restricted", values=("api.example.com",)),
+            evidence=(
+                CapabilityEvidence(
+                    adapter="openai",
+                    source="openai-tools.json#/tools/fetch_url",
+                    signal="function schema declares URL input",
+                ),
+            ),
+            confidence="high",
+        ),
+    ]
+
+    path = build_capability_graph(records).paths[0]
+    source_evidence = [item for item in path.evidence if "network.external via fetch_url" in item]
+
+    assert len(source_evidence) == 2
+    assert any("source=mcp-schema.json" in item for item in source_evidence)
+    assert any("source=openai-tools.json" in item for item in source_evidence)
+    assert any("mcp-schema.json#/tools/fetch_url" in item for item in source_evidence)
+    assert any("openai-tools.json#/tools/fetch_url" in item for item in source_evidence)
 
 
 def test_unrecognized_scope_kind_is_conservative_uncertainty():
