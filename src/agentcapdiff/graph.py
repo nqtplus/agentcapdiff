@@ -121,9 +121,20 @@ def _path_evidence(rule: PathRule, by_id: dict[str, list[Capability]]) -> tuple[
         for cap in by_id[capability_id]:
             scope_values = tuple(sorted(set(cap.scope.values)))
             values = ", ".join(scope_values) if scope_values else "not established"
+            source = cap.source.strip() or "not established"
+            provenance = sorted(
+                {
+                    f"{item.adapter}:{item.source or 'not established'}:{item.signal}"
+                    for item in cap.evidence
+                }
+            )
+            provenance_text = (
+                f"; evidence={'; '.join(provenance)}" if provenance else ""
+            )
             evidence.add(
-                f"{capability_id} via {cap.tool}; scope={cap.scope.kind} ({values}); "
-                f"confidence={cap.confidence}"
+                f"{capability_id} via {cap.tool}; source={source}; "
+                f"scope={cap.scope.kind} ({values}); confidence={cap.confidence}"
+                f"{provenance_text}"
             )
     return tuple(sorted(evidence))
 
