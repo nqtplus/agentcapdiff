@@ -10,6 +10,8 @@
 
 AgentCapDiff statically inventories AI-agent tools, maps them to normalized capabilities, evaluates least-privilege policy, emits SARIF for GitHub code scanning, and diffs capability snapshots across pull requests.
 
+**An NQTlabs project:** AgentCapDiff is part of the NQTlabs technology portfolio. Learn more at [nqtlabs.com](https://nqtlabs.com/).
+
 It is designed for **MCP**, **OpenAI / OpenAI Agents SDK**, **Claude**, **LangChain**, **LangGraph**, **CrewAI**, and generic JSON/YAML tool definitions.
 
 > **Core review question:** What can this agent do now that it could not do before?
